@@ -1,0 +1,553 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "API for an e-commerce platform with OTP-based authentication and product/market management.",
+        "title": "E-commerce API",
+        "contact": {},
+        "version": "1.0"
+    },
+    "host": "192.168.55.42:8080",
+    "basePath": "/",
+    "paths": {
+        "/login": {
+            "post": {
+                "description": "Initiates login by sending a verification code to the user's phone number. Checks if the phone is registered and logs the code.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Initiate user login",
+                "parameters": [
+                    {
+                        "description": "User login details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.LoginRequest"
+                        }
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/markets": {
+            "get": {
+                "description": "Retrieves a list of all markets. Requires JWT authentication.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Markets"
+                ],
+                "summary": "Get all markets",
+                "responses": {}
+            },
+            "post": {
+                "description": "Creates a new market with a name and an optional thumbnail image. Requires JWT authentication.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Markets"
+                ],
+                "summary": "Create a new market",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Market name",
+                        "name": "name",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "file",
+                        "description": "Thumbnail image",
+                        "name": "thumbnail",
+                        "in": "formData"
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/markets/{id}": {
+            "delete": {
+                "description": "Deletes a market by ID, including its thumbnail file and associated products. Requires JWT authentication.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Markets"
+                ],
+                "summary": "Delete a market",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Market ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/markets/{id}/products": {
+            "get": {
+                "description": "Retrieves all products for a specific market by ID. Requires JWT authentication.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Markets"
+                ],
+                "summary": "Get products for a market",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Market ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/markets/{id}/thumbnail": {
+            "post": {
+                "description": "Uploads a thumbnail image for a specific market. Requires JWT authentication.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Markets"
+                ],
+                "summary": "Upload market thumbnail",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Market ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "file",
+                        "description": "Thumbnail image",
+                        "name": "thumbnail",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/products": {
+            "get": {
+                "description": "Retrieves a paginated list of products across all markets, including favorite status, with optional name search. Requires JWT authentication.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Products"
+                ],
+                "summary": "Get all products with pagination and search",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Page number (default: 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Items per page (default: 10)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Search term for product name",
+                        "name": "search",
+                        "in": "query"
+                    }
+                ],
+                "responses": {}
+            },
+            "post": {
+                "description": "Creates a new product without thumbnails or sizes using JSON body. Requires JWT authentication.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Products"
+                ],
+                "summary": "Create a new product",
+                "parameters": [
+                    {
+                        "description": "Product details",
+                        "name": "product",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.ProductRequest"
+                        }
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/products/{id}": {
+            "get": {
+                "description": "Retrieves a single product by its ID. Requires JWT authentication.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Products"
+                ],
+                "summary": "Get a product by ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Product ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            },
+            "delete": {
+                "description": "Deletes a product by ID, including its thumbnails and associated files. Requires JWT authentication.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Products"
+                ],
+                "summary": "Delete a product",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Product ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/products/{id}/thumbnails": {
+            "post": {
+                "description": "Adds multiple thumbnail images with associated colors to a product by ID. Requires JWT authentication.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Products"
+                ],
+                "summary": "Add thumbnails to a product",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Product ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Comma-separated list of colors for thumbnails",
+                        "name": "colors",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "file",
+                        "description": "Thumbnail images",
+                        "name": "thumbnails",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/register": {
+            "post": {
+                "description": "Registers a new user with a full name and phone number, sending a verification code. Validates input, checks for duplicate phone numbers, and logs the code (replace with SMS in production).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Register a new user",
+                "parameters": [
+                    {
+                        "description": "User registration details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.RegisterRequest"
+                        }
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/sizes/{size_id}": {
+            "delete": {
+                "description": "Deletes a size by its ID from the sizes table. Requires JWT authentication.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Products"
+                ],
+                "summary": "Delete a size by ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Size ID",
+                        "name": "size_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/thumbnails": {
+            "get": {
+                "description": "Retrieves a list of all thumbnails with associated product information. Requires JWT authentication.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Products"
+                ],
+                "summary": "Get all thumbnails with product details",
+                "responses": {}
+            }
+        },
+        "/thumbnails/{thumbnail_id}": {
+            "delete": {
+                "description": "Deletes a thumbnail by its ID, including its file from uploads. Requires JWT authentication.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Products"
+                ],
+                "summary": "Delete a thumbnail",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Thumbnail ID",
+                        "name": "thumbnail_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/thumbnails/{thumbnail_id}/size": {
+            "post": {
+                "description": "Adds a single size with its count for a product associated with a specific thumbnail ID using JSON body. Requires JWT authentication.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Products"
+                ],
+                "summary": "Add a size with count by thumbnail ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Thumbnail ID",
+                        "name": "thumbnail_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Size and count",
+                        "name": "size",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.SizeRequest"
+                        }
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/verify": {
+            "post": {
+                "description": "Verifies a phone number using a 4-digit code, issuing a JWT token upon successful verification. Deletes the used code.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Verify phone number",
+                "parameters": [
+                    {
+                        "description": "Verification details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.VerifyCodeRequest"
+                        }
+                    }
+                ],
+                "responses": {}
+            }
+        }
+    },
+    "definitions": {
+        "api.LoginRequest": {
+            "type": "object",
+            "required": [
+                "phone"
+            ],
+            "properties": {
+                "phone": {
+                    "type": "string",
+                    "example": "+12345678901"
+                }
+            }
+        },
+        "api.ProductRequest": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "discount": {
+                    "type": "string"
+                },
+                "market_id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "price": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.RegisterRequest": {
+            "type": "object",
+            "required": [
+                "full_name",
+                "phone"
+            ],
+            "properties": {
+                "full_name": {
+                    "type": "string",
+                    "example": "John Doe"
+                },
+                "phone": {
+                    "type": "string",
+                    "example": "+12345678901"
+                }
+            }
+        },
+        "api.SizeRequest": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "size": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.VerifyCodeRequest": {
+            "type": "object",
+            "required": [
+                "code",
+                "phone"
+            ],
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "example": "1234"
+                },
+                "phone": {
+                    "type": "string",
+                    "example": "+12345678901"
+                }
+            }
+        }
+    },
+    "securityDefinitions": {
+        "BearerAuth": {
+            "description": "Bearer token for authentication (e.g., \"Bearer \u003ctoken\u003e\")",
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header"
+        }
+    }
+}

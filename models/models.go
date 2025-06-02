@@ -1,16 +1,21 @@
 package models
 
-import "time"
+import (
+	"time"
+
+	"github.com/dgrijalva/jwt-go"
+)
 
 // Product represents a product in the e-commerce system
 type Product struct {
 	ID          int         `json:"id"`
 	MarketID    int         `json:"market_id"`
+	MarketName  string      `json:"market_name"`
 	Name        string      `json:"name"`
 	Price       float64     `json:"price"`
 	Discount    float64     `json:"discount"`
 	Description string      `json:"description"`
-	CreatedAt   time.Time   `json:"created_at"`
+	CreatedAt   string      `json:"created_at"`
 	IsFavorite  bool        `json:"is_favorite"`
 	Thumbnails  []Thumbnail `json:"thumbnails"`
 	Sizes       []Size      `json:"sizes"`
@@ -29,6 +34,7 @@ type Size struct {
 	ID          int    `json:"id"`
 	ThumbnailID int    `json:"thumbnail_id"`
 	Size        string `json:"size"`
+	Count       int    `json:"count"`
 }
 
 // Market represents a market in the e-commerce system
@@ -40,18 +46,27 @@ type Market struct {
 
 // User represents a user in the system
 type User struct {
-	ID        int    `json:"id"`
-	FullName  string `json:"full_name"`
-	Phone     string `json:"phone"`
-	Password  string `json:"password"`
-	Verified  bool   `json:"verified"`
+	ID        int       `json:"id"`
+	FullName  string    `json:"full_name"`
+	Phone     string    `json:"phone"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
-// OTP represents an OTP entry
-type OTP struct {
-	ID        int       `json:"id"`
-	UserID    int       `json:"user_id"`
+// VerificationCode represents a verification code entry
+type VerificationCode struct {
 	Phone     string    `json:"phone"`
 	Code      string    `json:"code"`
 	ExpiresAt time.Time `json:"expires_at"`
+	FullName  string    `json:"full_name"`
+}
+
+// Claims for JWT
+type Claims struct {
+	UserID int `json:"user_id"`
+	jwt.StandardClaims
+}
+
+type AuthClaims struct {
+	UserID int `json:"user_id"`
+	jwt.StandardClaims
 }

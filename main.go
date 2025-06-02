@@ -1,34 +1,41 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 
-	"github.com/Dowlet-projects/ecommerce/api"
-	"github.com/Dowlet-projects/ecommerce/services"
+	"Dowlet_projects/ecommerce/api"
+	_ "Dowlet_projects/ecommerce/docs" // Swagger docs
+	"Dowlet_projects/ecommerce/services"
 	"github.com/gorilla/mux"
+	httpSwagger "github.com/swaggo/http-swagger"
 )
 
+// @title E-commerce API
+// @version 1.0
+// @description API for an e-commerce platform with OTP-based authentication and product/market management.
+// @host 192.168.55.42:8080
+// @BasePath /
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Bearer token for authentication (e.g., "Bearer <token>")
 func main() {
-	// Initialize database
-	dbService, err := services.NewDBService("your_mysql_user", "your_mysql_password", "ecommerce_db")
+	dbService, err := services.NewDBService("root", "", "ecommerce_db")
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Failed to connect to database: %v", err)
 	}
 	defer dbService.Close()
 
-	// Initialize router
 	router := mux.NewRouter()
+	handler := api.NewHandler(dbService)
+	handler.SetupRoutes(router)
 
-	// Initialize API handlers
-	apiHandler := api.NewHandler(dbService)
+	// Swagger UI route
+	router.PathPrefix("/swagger/").Handler(httpSwagger.WrapHandler)
+	router.PathPrefix("/docs/").Handler(http.StripPrefix("/docs/", http.FileServer(http.Dir("docs"))))
 
-	// Setup routes
-	apiHandler.SetupRoutes(router)
-
-	// Serve uploaded files
-	router.PathPrefix("/uploads/").Handler(http.StripPrefix("/uploads/", http.FileServer(http.Dir("uploads"))))
-
-	// Start server
+	fmt.Println("Server running on :8080")
 	log.Fatal(http.ListenAndServe(":8080", router))
 }

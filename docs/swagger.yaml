@@ -1,0 +1,391 @@
+basePath: /
+definitions:
+  api.LoginRequest:
+    properties:
+      phone:
+        example: "+12345678901"
+        type: string
+    required:
+    - phone
+    type: object
+  api.ProductRequest:
+    properties:
+      description:
+        type: string
+      discount:
+        type: string
+      market_id:
+        type: string
+      name:
+        type: string
+      price:
+        type: string
+    type: object
+  api.RegisterRequest:
+    properties:
+      full_name:
+        example: John Doe
+        type: string
+      phone:
+        example: "+12345678901"
+        type: string
+    required:
+    - full_name
+    - phone
+    type: object
+  api.SizeRequest:
+    properties:
+      count:
+        type: integer
+      size:
+        type: string
+    type: object
+  api.VerifyCodeRequest:
+    properties:
+      code:
+        example: "1234"
+        type: string
+      phone:
+        example: "+12345678901"
+        type: string
+    required:
+    - code
+    - phone
+    type: object
+host: 192.168.55.42:8080
+info:
+  contact: {}
+  description: API for an e-commerce platform with OTP-based authentication and product/market
+    management.
+  title: E-commerce API
+  version: "1.0"
+paths:
+  /login:
+    post:
+      consumes:
+      - application/json
+      description: Initiates login by sending a verification code to the user's phone
+        number. Checks if the phone is registered and logs the code.
+      parameters:
+      - description: User login details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/api.LoginRequest'
+      produces:
+      - application/json
+      responses: {}
+      summary: Initiate user login
+      tags:
+      - Authentication
+  /markets:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves a list of all markets. Requires JWT authentication.
+      produces:
+      - application/json
+      responses: {}
+      summary: Get all markets
+      tags:
+      - Markets
+    post:
+      consumes:
+      - multipart/form-data
+      description: Creates a new market with a name and an optional thumbnail image.
+        Requires JWT authentication.
+      parameters:
+      - description: Market name
+        in: formData
+        name: name
+        required: true
+        type: string
+      - description: Thumbnail image
+        in: formData
+        name: thumbnail
+        type: file
+      produces:
+      - application/json
+      responses: {}
+      summary: Create a new market
+      tags:
+      - Markets
+  /markets/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Deletes a market by ID, including its thumbnail file and associated
+        products. Requires JWT authentication.
+      parameters:
+      - description: Market ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      summary: Delete a market
+      tags:
+      - Markets
+  /markets/{id}/products:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves all products for a specific market by ID. Requires JWT
+        authentication.
+      parameters:
+      - description: Market ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      summary: Get products for a market
+      tags:
+      - Markets
+  /markets/{id}/thumbnail:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Uploads a thumbnail image for a specific market. Requires JWT authentication.
+      parameters:
+      - description: Market ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Thumbnail image
+        in: formData
+        name: thumbnail
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses: {}
+      summary: Upload market thumbnail
+      tags:
+      - Markets
+  /products:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves a paginated list of products across all markets, including
+        favorite status, with optional name search. Requires JWT authentication.
+      parameters:
+      - description: 'Page number (default: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Items per page (default: 10)'
+        in: query
+        name: limit
+        type: integer
+      - description: Search term for product name
+        in: query
+        name: search
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      summary: Get all products with pagination and search
+      tags:
+      - Products
+    post:
+      consumes:
+      - application/json
+      description: Creates a new product without thumbnails or sizes using JSON body.
+        Requires JWT authentication.
+      parameters:
+      - description: Product details
+        in: body
+        name: product
+        required: true
+        schema:
+          $ref: '#/definitions/api.ProductRequest'
+      produces:
+      - application/json
+      responses: {}
+      summary: Create a new product
+      tags:
+      - Products
+  /products/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Deletes a product by ID, including its thumbnails and associated
+        files. Requires JWT authentication.
+      parameters:
+      - description: Product ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      summary: Delete a product
+      tags:
+      - Products
+    get:
+      consumes:
+      - application/json
+      description: Retrieves a single product by its ID. Requires JWT authentication.
+      parameters:
+      - description: Product ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      summary: Get a product by ID
+      tags:
+      - Products
+  /products/{id}/thumbnails:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Adds multiple thumbnail images with associated colors to a product
+        by ID. Requires JWT authentication.
+      parameters:
+      - description: Product ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Comma-separated list of colors for thumbnails
+        in: formData
+        name: colors
+        required: true
+        type: string
+      - description: Thumbnail images
+        in: formData
+        name: thumbnails
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses: {}
+      summary: Add thumbnails to a product
+      tags:
+      - Products
+  /register:
+    post:
+      consumes:
+      - application/json
+      description: Registers a new user with a full name and phone number, sending
+        a verification code. Validates input, checks for duplicate phone numbers,
+        and logs the code (replace with SMS in production).
+      parameters:
+      - description: User registration details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/api.RegisterRequest'
+      produces:
+      - application/json
+      responses: {}
+      summary: Register a new user
+      tags:
+      - Authentication
+  /sizes/{size_id}:
+    delete:
+      description: Deletes a size by its ID from the sizes table. Requires JWT authentication.
+      parameters:
+      - description: Size ID
+        in: path
+        name: size_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      summary: Delete a size by ID
+      tags:
+      - Products
+  /thumbnails:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves a list of all thumbnails with associated product information.
+        Requires JWT authentication.
+      produces:
+      - application/json
+      responses: {}
+      summary: Get all thumbnails with product details
+      tags:
+      - Products
+  /thumbnails/{thumbnail_id}:
+    delete:
+      consumes:
+      - application/json
+      description: Deletes a thumbnail by its ID, including its file from uploads.
+        Requires JWT authentication.
+      parameters:
+      - description: Thumbnail ID
+        in: path
+        name: thumbnail_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      summary: Delete a thumbnail
+      tags:
+      - Products
+  /thumbnails/{thumbnail_id}/size:
+    post:
+      consumes:
+      - application/json
+      description: Adds a single size with its count for a product associated with
+        a specific thumbnail ID using JSON body. Requires JWT authentication.
+      parameters:
+      - description: Thumbnail ID
+        in: path
+        name: thumbnail_id
+        required: true
+        type: string
+      - description: Size and count
+        in: body
+        name: size
+        required: true
+        schema:
+          $ref: '#/definitions/api.SizeRequest'
+      produces:
+      - application/json
+      responses: {}
+      summary: Add a size with count by thumbnail ID
+      tags:
+      - Products
+  /verify:
+    post:
+      consumes:
+      - application/json
+      description: Verifies a phone number using a 4-digit code, issuing a JWT token
+        upon successful verification. Deletes the used code.
+      parameters:
+      - description: Verification details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/api.VerifyCodeRequest'
+      produces:
+      - application/json
+      responses: {}
+      summary: Verify phone number
+      tags:
+      - Authentication
+securityDefinitions:
+  BearerAuth:
+    description: Bearer token for authentication (e.g., "Bearer <token>")
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"
