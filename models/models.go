@@ -18,7 +18,6 @@ type Product struct {
 	CreatedAt   string      `json:"created_at"`
 	IsFavorite  bool        `json:"is_favorite"`
 	Thumbnails  []Thumbnail `json:"thumbnails"`
-	Sizes       []Size      `json:"sizes"`
 }
 
 // Thumbnail represents a product thumbnail
@@ -27,6 +26,7 @@ type Thumbnail struct {
 	ProductID int    `json:"product_id"`
 	Color     string `json:"color"`
 	ImageURL  string `json:"image_url"`
+	Sizes       []Size      `json:"sizes"`
 }
 
 // Size represents a product size related to thumbnail color

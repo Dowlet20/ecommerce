@@ -151,7 +151,7 @@ func (s *DBService) GetMarketProducts(marketID string) ([]models.Product, error)
 		if err := rows.Scan(&p.ID, &p.MarketID, &p.MarketName, &p.Name, &p.Price, &p.Discount, &p.Description, &p.CreatedAt, &p.IsFavorite); err != nil {
 			return nil, err
 		}
-		p.Thumbnails, p.Sizes, err = s.getProductDetails(p.ID)
+		p.Thumbnails, err = s.getProductDetails(p.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -199,7 +199,7 @@ func (s *DBService) GetPaginatedProducts(page, limit int, search string) ([]mode
 		if err := rows.Scan(&p.ID, &p.MarketID, &p.MarketName, &p.Name, &p.Price, &p.Discount, &p.Description, &p.CreatedAt, &p.IsFavorite); err != nil {
 			return nil, fmt.Errorf("failed to scan product: %v", err)
 		}
-		p.Thumbnails, p.Sizes, err = s.getProductDetails(p.ID)
+		p.Thumbnails, err = s.getProductDetails(p.ID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get product details: %v", err)
 		}
@@ -222,41 +222,42 @@ func (s *DBService) GetProduct(id string) (models.Product, error) {
 		return p, err
 	}
 
-	p.Thumbnails, p.Sizes, err = s.getProductDetails(p.ID)
+	p.Thumbnails,  err = s.getProductDetails(p.ID)
 	return p, err
 }
 
 // getProductDetails retrieves thumbnails and sizes for a product
-func (s *DBService) getProductDetails(productID int) ([]models.Thumbnail, []models.Size, error) {
+func (s *DBService) getProductDetails(productID int) ([]models.Thumbnail, error) {
 	thumbRows, err := s.db.Query("SELECT id, product_id, color, image_url FROM thumbnails WHERE product_id = ?", productID)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	defer thumbRows.Close()
 
 	var thumbnails []models.Thumbnail
-	var sizes []models.Size
 	for thumbRows.Next() {
+		var sizes []models.Size
 		var t models.Thumbnail
 		if err := thumbRows.Scan(&t.ID, &t.ProductID, &t.Color, &t.ImageURL); err != nil {
-			return nil, nil, err
+			return nil,  err
 		}
 		sizeRows, err := s.db.Query("SELECT id, thumbnail_id, size, count FROM sizes WHERE thumbnail_id = ?", t.ID)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		defer sizeRows.Close()
 
 		for sizeRows.Next() {
 			var s models.Size
 			if err := sizeRows.Scan(&s.ID, &s.ThumbnailID, &s.Size, &s.Count); err != nil {
-				return nil, nil, err
+				return nil, err
 			}
 			sizes = append(sizes, s)
+			t.Sizes = sizes
 		}
 		thumbnails = append(thumbnails, t)
 	}
-	return thumbnails, sizes, nil
+	return thumbnails,  nil
 }
 
 // CreateProduct creates a new product
