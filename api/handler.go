@@ -1,21 +1,22 @@
 package api
 
 import (
-	"database/sql"
+	//"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"time"
-	"io"
 
+	"log"
+
+	"github.com/Dowlet-projects/ecommerce/models"
+	"github.com/Dowlet-projects/ecommerce/services"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/gorilla/mux"
 	"github.com/rs/cors"
-	"github.com/yourusername/ecommerce/models"
-	"github.com/yourusername/ecommerce/services"
-	"log"
 )
 
 // Handler holds dependencies for API routes

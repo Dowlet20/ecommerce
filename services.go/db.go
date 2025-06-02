@@ -3,11 +3,11 @@ package services
 import (
 	"database/sql"
 	"fmt"
-	"time"
 	"strings"
+	"time"
 
+	"github.com/Dowlet-projects/ecommerce/models"
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/yourusername/ecommerce/models"
 )
 
 // DBService handles database operations

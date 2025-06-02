@@ -4,9 +4,9 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/Dowlet-projects/ecommerce/api"
+	"github.com/Dowlet-projects/ecommerce/services"
 	"github.com/gorilla/mux"
-	"github.com/yourusername/ecommerce/api"
-	"github.com/yourusername/ecommerce/services"
 )
 
 func main() {
