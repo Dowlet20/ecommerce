@@ -1,5 +1,10 @@
 basePath: /
 definitions:
+  api.FavoriteRequest:
+    properties:
+      product_id:
+        type: integer
+    type: object
   api.LoginRequest:
     properties:
       phone:
@@ -60,6 +65,49 @@ info:
   title: E-commerce API
   version: "1.0"
 paths:
+  /api/favorites:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves a paginated list of the authenticated user's favorite
+        products. Requires JWT authentication.
+      parameters:
+      - description: 'Page number (default: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Items per page (default: 10)'
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Get user's favorite products
+      tags:
+      - Favorites
+    post:
+      consumes:
+      - application/json
+      description: Adds a product to the user's favorites if not already favorited,
+        or removes it if it is. Requires JWT authentication.
+      parameters:
+      - description: Product ID
+        in: body
+        name: favorite
+        required: true
+        schema:
+          $ref: '#/definitions/api.FavoriteRequest'
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Toggle favorite product
+      tags:
+      - Favorites
   /login:
     post:
       consumes:

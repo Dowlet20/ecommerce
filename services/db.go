@@ -260,7 +260,7 @@ func (s *DBService) getProductDetails(productID int) ([]models.Thumbnail, error)
 	return thumbnails,  nil
 }
 
-// CreateProduct creates a new product
+// CreateProduct creates a new product 
 func (s *DBService) CreateProduct(marketID, name, price, discount, description string) (int, error) {
 	marketIDInt, err := strconv.Atoi(marketID)
 	if err != nil {
@@ -523,3 +523,84 @@ func (s *DBService) DeleteSizeByID(sizeID string) error {
 
 	return nil
 }
+
+
+
+
+// GetUserFavoriteProducts retrieves paginated favorite products for a user
+func (s *DBService) GetUserFavoriteProducts(userID int, page, limit int) ([]models.Product, error) {
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 {
+		limit = 10
+	}
+	offset := (page - 1) * limit
+
+	query := `
+		SELECT p.id, p.market_id, m.name as market_name, p.name, p.price, p.discount, p.description, p.created_at, 
+		       true as is_favorite
+		FROM products p INNER JOIN markets m on p.market_id = m.id 
+		INNER JOIN favorites f ON p.id = f.product_id
+		WHERE f.user_id = ?
+		ORDER BY p.id LIMIT ? OFFSET ?`
+
+	rows, err := s.db.Query(query, userID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query favorite products: %v", err)
+	}
+	defer rows.Close()
+
+	var products []models.Product
+	for rows.Next() {
+		var p models.Product
+		if err := rows.Scan(&p.ID, &p.MarketID, &p.MarketName, &p.Name, &p.Price, &p.Discount, &p.Description, &p.CreatedAt, &p.IsFavorite); err != nil {
+			return nil, fmt.Errorf("failed to scan product: %v", err)
+		}
+		p.Thumbnails, err = s.getProductDetails(p.ID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get product details: %v", err)
+		}
+		products = append(products, p)
+	}
+
+	return products, nil
+}
+
+
+// ToggleFavoriteProduct adds or removes a product from the user's favorites
+func (s *DBService) ToggleFavoriteProduct(userID, productID int) (bool, error) {
+	// Check if product exists
+	var exists bool
+	err := s.db.QueryRow("SELECT EXISTS(SELECT 1 FROM products WHERE id = ?)", productID).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("failed to validate product: %v", err)
+	}
+	if !exists {
+		return false, fmt.Errorf("product not found")
+	}
+
+	// Check if already favorited
+	err = s.db.QueryRow("SELECT EXISTS(SELECT 1 FROM favorites WHERE user_id = ? AND product_id = ?)", userID, productID).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("failed to check favorite status: %v", err)
+	}
+
+	if exists {
+		// Remove from favorites
+		_, err = s.db.Exec("DELETE FROM favorites WHERE user_id = ? AND product_id = ?", userID, productID)
+		if err != nil {
+			return false, fmt.Errorf("failed to remove favorite: %v", err)
+		}
+		return false, nil // is_favorite = false
+	}
+
+	// Add to favorites
+	_, err = s.db.Exec("INSERT INTO favorites (user_id, product_id) VALUES (?, ?)", userID, productID)
+	if err != nil {
+		return false, fmt.Errorf("failed to add favorite: %v", err)
+	}
+	return true, nil // is_favorite = true
+}
+
+
