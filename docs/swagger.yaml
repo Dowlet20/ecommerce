@@ -1,5 +1,18 @@
 basePath: /
 definitions:
+  api.CartRequest:
+    properties:
+      count:
+        type: integer
+      market_id:
+        type: integer
+      product_id:
+        type: integer
+      size_id:
+        type: integer
+      thumbnail_id:
+        type: integer
+    type: object
   api.FavoriteRequest:
     properties:
       product_id:
@@ -13,18 +26,25 @@ definitions:
     required:
     - phone
     type: object
+  api.MarketRequest:
+    properties:
+      password:
+        type: string
+      username:
+        type: string
+    type: object
   api.ProductRequest:
     properties:
+      category_id:
+        type: integer
       description:
         type: string
       discount:
-        type: string
-      market_id:
-        type: string
+        type: number
       name:
         type: string
       price:
-        type: string
+        type: number
     type: object
   api.RegisterRequest:
     properties:
@@ -45,6 +65,20 @@ definitions:
       size:
         type: string
     type: object
+  api.SuperadminRequest:
+    properties:
+      password:
+        type: string
+      username:
+        type: string
+    type: object
+  api.UserRegisterRequest:
+    properties:
+      full_name:
+        type: string
+      phone:
+        type: string
+    type: object
   api.VerifyCodeRequest:
     properties:
       code:
@@ -57,6 +91,17 @@ definitions:
     - code
     - phone
     type: object
+  models.SuperadminRegisterRequest:
+    properties:
+      full_name:
+        type: string
+      password:
+        type: string
+      phone:
+        type: string
+      username:
+        type: string
+    type: object
 host: 192.168.55.42:8080
 info:
   contact: {}
@@ -65,12 +110,41 @@ info:
   title: E-commerce API
   version: "1.0"
 paths:
-  /api/favorites:
+  /api/cart:
     get:
+      description: Retrieves the user's cart grouped by markets. Requires user JWT
+        authentication.
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Get user cart
+      tags:
+      - Cart
+    post:
       consumes:
       - application/json
-      description: Retrieves a paginated list of the authenticated user's favorite
-        products. Requires JWT authentication.
+      description: Adds or updates a product in the user's cart. Requires user JWT
+        authentication.
+      parameters:
+      - description: Cart entry details
+        in: body
+        name: cart
+        required: true
+        schema:
+          $ref: '#/definitions/api.CartRequest'
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Add to cart
+      tags:
+      - Cart
+  /api/favorites:
+    get:
+      description: Retrieves a paginated list of favorite products. Requires JWT authentication.
       parameters:
       - description: 'Page number (default: 1)'
         in: query
@@ -91,8 +165,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: Adds a product to the user's favorites if not already favorited,
-        or removes it if it is. Requires JWT authentication.
+      description: Adds or removes a product from favorites. Requires JWT authentication.
       parameters:
       - description: Product ID
         in: body
@@ -108,94 +181,7 @@ paths:
       summary: Toggle favorite product
       tags:
       - Favorites
-  /login:
-    post:
-      consumes:
-      - application/json
-      description: Initiates login by sending a verification code to the user's phone
-        number. Checks if the phone is registered and logs the code.
-      parameters:
-      - description: User login details
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/api.LoginRequest'
-      produces:
-      - application/json
-      responses: {}
-      summary: Initiate user login
-      tags:
-      - Authentication
-  /markets:
-    get:
-      consumes:
-      - application/json
-      description: Retrieves a list of all markets. Requires JWT authentication.
-      produces:
-      - application/json
-      responses: {}
-      summary: Get all markets
-      tags:
-      - Markets
-    post:
-      consumes:
-      - multipart/form-data
-      description: Creates a new market with a name and an optional thumbnail image.
-        Requires JWT authentication.
-      parameters:
-      - description: Market name
-        in: formData
-        name: name
-        required: true
-        type: string
-      - description: Thumbnail image
-        in: formData
-        name: thumbnail
-        type: file
-      produces:
-      - application/json
-      responses: {}
-      summary: Create a new market
-      tags:
-      - Markets
-  /markets/{id}:
-    delete:
-      consumes:
-      - application/json
-      description: Deletes a market by ID, including its thumbnail file and associated
-        products. Requires JWT authentication.
-      parameters:
-      - description: Market ID
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses: {}
-      summary: Delete a market
-      tags:
-      - Markets
-  /markets/{id}/products:
-    get:
-      consumes:
-      - application/json
-      description: Retrieves all products for a specific market by ID. Requires JWT
-        authentication.
-      parameters:
-      - description: Market ID
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses: {}
-      summary: Get products for a market
-      tags:
-      - Markets
-  /markets/{id}/thumbnail:
+  /api/market/markets/{id}/thumbnail:
     post:
       consumes:
       - multipart/form-data
@@ -214,39 +200,17 @@ paths:
       produces:
       - application/json
       responses: {}
+      security:
+      - BearerAuth: []
       summary: Upload market thumbnail
       tags:
       - Markets
-  /products:
-    get:
-      consumes:
-      - application/json
-      description: Retrieves a paginated list of products across all markets, including
-        favorite status, with optional name search. Requires JWT authentication.
-      parameters:
-      - description: 'Page number (default: 1)'
-        in: query
-        name: page
-        type: integer
-      - description: 'Items per page (default: 10)'
-        in: query
-        name: limit
-        type: integer
-      - description: Search term for product name
-        in: query
-        name: search
-        type: string
-      produces:
-      - application/json
-      responses: {}
-      summary: Get all products with pagination and search
-      tags:
-      - Products
+  /api/market/products:
     post:
       consumes:
       - application/json
-      description: Creates a new product without thumbnails or sizes using JSON body.
-        Requires JWT authentication.
+      description: Creates a new product for the market admin's market. Requires JWT
+        authentication.
       parameters:
       - description: Product details
         in: body
@@ -257,44 +221,12 @@ paths:
       produces:
       - application/json
       responses: {}
+      security:
+      - BearerAuth: []
       summary: Create a new product
       tags:
       - Products
-  /products/{id}:
-    delete:
-      consumes:
-      - application/json
-      description: Deletes a product by ID, including its thumbnails and associated
-        files. Requires JWT authentication.
-      parameters:
-      - description: Product ID
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses: {}
-      summary: Delete a product
-      tags:
-      - Products
-    get:
-      consumes:
-      - application/json
-      description: Retrieves a single product by its ID. Requires JWT authentication.
-      parameters:
-      - description: Product ID
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses: {}
-      summary: Get a product by ID
-      tags:
-      - Products
-  /products/{id}/thumbnails:
+  /api/market/products/{id}/thumbnails:
     post:
       consumes:
       - multipart/form-data
@@ -319,7 +251,348 @@ paths:
       produces:
       - application/json
       responses: {}
+      security:
+      - BearerAuth: []
       summary: Add thumbnails to a product
+      tags:
+      - Products
+  /api/market/products/{product_id}:
+    delete:
+      description: Deletes a product and its thumbnails for the market admin's market.
+        Requires JWT authentication.
+      parameters:
+      - description: Product ID
+        in: path
+        name: product_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Delete a product
+      tags:
+      - Products
+    put:
+      consumes:
+      - application/json
+      description: Updates a product for the market admin's market. Requires JWT authentication.
+      parameters:
+      - description: Product ID
+        in: path
+        name: product_id
+        required: true
+        type: string
+      - description: Product details
+        in: body
+        name: product
+        required: true
+        schema:
+          $ref: '#/definitions/api.ProductRequest'
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Update a product
+      tags:
+      - Products
+  /api/market/sizes/{size_id}:
+    delete:
+      description: Deletes a size by its ID. Requires JWT authentication.
+      parameters:
+      - description: Size ID
+        in: path
+        name: size_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Delete a size by ID
+      tags:
+      - Products
+  /api/market/thumbnails/{thumbnail_id}:
+    delete:
+      description: Deletes a thumbnail by its ID. Requires JWT authentication.
+      parameters:
+      - description: Thumbnail ID
+        in: path
+        name: thumbnail_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Delete a thumbnail
+      tags:
+      - Products
+  /api/market/thumbnails/{thumbnail_id}/size:
+    post:
+      consumes:
+      - application/json
+      description: Adds a size with count linked to a thumbnail. Requires JWT authentication.
+      parameters:
+      - description: Thumbnail ID
+        in: path
+        name: thumbnail_id
+        required: true
+        type: string
+      - description: Size and count
+        in: body
+        name: size
+        required: true
+        schema:
+          $ref: '#/definitions/api.SizeRequest'
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Add a size by thumbnail ID
+      tags:
+      - Products
+  /api/superadmin/categories:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Creates a category with name and optional thumbnail image. Requires
+        superadmin JWT authentication.
+      parameters:
+      - description: Category name
+        in: formData
+        name: name
+        required: true
+        type: string
+      - description: Thumbnail image
+        in: formData
+        name: thumbnail
+        type: file
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Create a new category
+      tags:
+      - Categories
+  /api/superadmin/categories/{category_id}:
+    delete:
+      description: Deletes a category and its thumbnail image. Requires superadmin
+        JWT authentication.
+      parameters:
+      - description: Category ID
+        in: path
+        name: category_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Delete a category
+      tags:
+      - Categories
+  /api/superadmin/markets:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Creates a new market with an admin account and optional thumbnail
+        image. Requires superadmin JWT authentication.
+      parameters:
+      - description: Market name
+        in: formData
+        name: name
+        required: true
+        type: string
+      - description: Admin username
+        in: formData
+        name: username
+        required: true
+        type: string
+      - description: Admin full name
+        in: formData
+        name: full_name
+        required: true
+        type: string
+      - description: Admin phone
+        in: formData
+        name: phone
+        required: true
+        type: string
+      - description: Delivery price
+        in: formData
+        name: delivery_price
+        required: true
+        type: number
+      - description: Admin password
+        in: formData
+        name: password
+        required: true
+        type: string
+      - description: Thumbnail image
+        in: formData
+        name: thumbnail
+        type: file
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Create a new market
+      tags:
+      - Markets
+  /api/superadmin/markets/{id}:
+    delete:
+      description: Deletes a market, its products, and thumbnails. Requires superadmin
+        JWT authentication.
+      parameters:
+      - description: Market ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Delete a market
+      tags:
+      - Markets
+  /categories:
+    get:
+      description: Retrieves a paginated list of categories with optional name search.
+        Requires superadmin JWT authentication.
+      parameters:
+      - description: 'Page number (default: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Items per page (default: 10)'
+        in: query
+        name: limit
+        type: integer
+      - description: Search by category name
+        in: query
+        name: search
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      summary: Get categories
+      tags:
+      - Categories
+  /login:
+    post:
+      consumes:
+      - application/json
+      description: Initiates login by sending a verification code to the user's phone
+        number. Checks if the phone is registered and logs the code.
+      parameters:
+      - description: User login details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/api.LoginRequest'
+      produces:
+      - application/json
+      responses: {}
+      summary: Initiate user login
+      tags:
+      - Authentication
+  /market/login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticates a market admin and returns a JWT token.
+      parameters:
+      - description: Market admin credentials
+        in: body
+        name: credentials
+        required: true
+        schema:
+          $ref: '#/definitions/api.MarketRequest'
+      produces:
+      - application/json
+      responses: {}
+      summary: Login market admin
+      tags:
+      - Authentication
+  /markets:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves a list of all markets. Requires JWT authentication.
+      produces:
+      - application/json
+      responses: {}
+      summary: Get all markets
+      tags:
+      - Markets
+  /markets/{id}:
+    get:
+      description: Retrieves market details and its products by market ID.
+      parameters:
+      - description: Market ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      summary: Get market by ID
+      tags:
+      - Markets
+  /products:
+    get:
+      description: Retrieves paginated products with optional category and name search
+      parameters:
+      - description: Category ID
+        in: query
+        name: category_id
+        type: string
+      - description: 'Page number (default: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Items per page (default: 10)'
+        in: query
+        name: limit
+        type: integer
+      - description: Search by product name
+        in: query
+        name: search
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      summary: Get all products
+      tags:
+      - Products
+  /products/{id}:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves a single product by its ID. Requires JWT authentication.
+      parameters:
+      - description: Product ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      summary: Get a product by ID
       tags:
       - Products
   /register:
@@ -342,21 +615,43 @@ paths:
       summary: Register a new user
       tags:
       - Authentication
-  /sizes/{size_id}:
-    delete:
-      description: Deletes a size by its ID from the sizes table. Requires JWT authentication.
+  /superadmin/login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticates a superadmin and returns a JWT token.
       parameters:
-      - description: Size ID
-        in: path
-        name: size_id
+      - description: Superadmin credentials
+        in: body
+        name: credentials
         required: true
-        type: string
+        schema:
+          $ref: '#/definitions/api.SuperadminRequest'
       produces:
       - application/json
       responses: {}
-      summary: Delete a size by ID
+      summary: Login superadmin
       tags:
-      - Products
+      - Superadmin
+  /superadmin/register:
+    post:
+      consumes:
+      - application/json
+      description: Registers a new superadmin with username, full name, phone, and
+        password.
+      parameters:
+      - description: Superadmin details
+        in: body
+        name: superadmin
+        required: true
+        schema:
+          $ref: '#/definitions/models.SuperadminRegisterRequest'
+      produces:
+      - application/json
+      responses: {}
+      summary: Register a new superadmin
+      tags:
+      - Superadmin
   /thumbnails:
     get:
       consumes:
@@ -369,48 +664,24 @@ paths:
       summary: Get all thumbnails with product details
       tags:
       - Products
-  /thumbnails/{thumbnail_id}:
-    delete:
-      consumes:
-      - application/json
-      description: Deletes a thumbnail by its ID, including its file from uploads.
-        Requires JWT authentication.
-      parameters:
-      - description: Thumbnail ID
-        in: path
-        name: thumbnail_id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses: {}
-      summary: Delete a thumbnail
-      tags:
-      - Products
-  /thumbnails/{thumbnail_id}/size:
+  /users/register:
     post:
       consumes:
       - application/json
-      description: Adds a single size with its count for a product associated with
-        a specific thumbnail ID using JSON body. Requires JWT authentication.
+      description: Registers a user and sends OTP.
       parameters:
-      - description: Thumbnail ID
-        in: path
-        name: thumbnail_id
-        required: true
-        type: string
-      - description: Size and count
+      - description: User details
         in: body
-        name: size
+        name: user
         required: true
         schema:
-          $ref: '#/definitions/api.SizeRequest'
+          $ref: '#/definitions/api.UserRegisterRequest'
       produces:
       - application/json
       responses: {}
-      summary: Add a size with count by thumbnail ID
+      summary: Register user
       tags:
-      - Products
+      - Authentication
   /verify:
     post:
       consumes:

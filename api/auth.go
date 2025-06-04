@@ -1,19 +1,21 @@
 package api
 
 import (
+	//"context"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
+
 	//"io"
 	"net/http"
 	//"os"
 	//"path/filepath"
 	"regexp"
-	"strings"
+	//"strings"
 	"time"
 	//"strconv"
-
 
 	"github.com/dgrijalva/jwt-go"
 	//"github.com/gorilla/mux"
@@ -21,7 +23,6 @@ import (
 	"Dowlet_projects/ecommerce/models"
 	"Dowlet_projects/ecommerce/services"
 )
-
 
 // RegisterRequest defines the request body for user registration
 type RegisterRequest struct {

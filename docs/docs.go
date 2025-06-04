@@ -15,6 +15,54 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/api/cart": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieves the user's cart grouped by markets. Requires user JWT authentication.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Cart"
+                ],
+                "summary": "Get user cart",
+                "responses": {}
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Adds or updates a product in the user's cart. Requires user JWT authentication.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Cart"
+                ],
+                "summary": "Add to cart",
+                "parameters": [
+                    {
+                        "description": "Cart entry details",
+                        "name": "cart",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.CartRequest"
+                        }
+                    }
+                ],
+                "responses": {}
+            }
+        },
         "/api/favorites": {
             "get": {
                 "security": [
@@ -22,10 +70,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retrieves a paginated list of the authenticated user's favorite products. Requires JWT authentication.",
-                "consumes": [
-                    "application/json"
-                ],
+                "description": "Retrieves a paginated list of favorite products. Requires JWT authentication.",
                 "produces": [
                     "application/json"
                 ],
@@ -55,7 +100,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Adds a product to the user's favorites if not already favorited, or removes it if it is. Requires JWT authentication.",
+                "description": "Adds or removes a product from favorites. Requires JWT authentication.",
                 "consumes": [
                     "application/json"
                 ],
@@ -80,130 +125,13 @@ const docTemplate = `{
                 "responses": {}
             }
         },
-        "/login": {
+        "/api/market/markets/{id}/thumbnail": {
             "post": {
-                "description": "Initiates login by sending a verification code to the user's phone number. Checks if the phone is registered and logs the code.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Authentication"
-                ],
-                "summary": "Initiate user login",
-                "parameters": [
+                "security": [
                     {
-                        "description": "User login details",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/api.LoginRequest"
-                        }
+                        "BearerAuth": []
                     }
                 ],
-                "responses": {}
-            }
-        },
-        "/markets": {
-            "get": {
-                "description": "Retrieves a list of all markets. Requires JWT authentication.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Markets"
-                ],
-                "summary": "Get all markets",
-                "responses": {}
-            },
-            "post": {
-                "description": "Creates a new market with a name and an optional thumbnail image. Requires JWT authentication.",
-                "consumes": [
-                    "multipart/form-data"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Markets"
-                ],
-                "summary": "Create a new market",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Market name",
-                        "name": "name",
-                        "in": "formData",
-                        "required": true
-                    },
-                    {
-                        "type": "file",
-                        "description": "Thumbnail image",
-                        "name": "thumbnail",
-                        "in": "formData"
-                    }
-                ],
-                "responses": {}
-            }
-        },
-        "/markets/{id}": {
-            "delete": {
-                "description": "Deletes a market by ID, including its thumbnail file and associated products. Requires JWT authentication.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Markets"
-                ],
-                "summary": "Delete a market",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Market ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {}
-            }
-        },
-        "/markets/{id}/products": {
-            "get": {
-                "description": "Retrieves all products for a specific market by ID. Requires JWT authentication.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Markets"
-                ],
-                "summary": "Get products for a market",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Market ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {}
-            }
-        },
-        "/markets/{id}/thumbnail": {
-            "post": {
                 "description": "Uploads a thumbnail image for a specific market. Requires JWT authentication.",
                 "consumes": [
                     "multipart/form-data"
@@ -234,43 +162,14 @@ const docTemplate = `{
                 "responses": {}
             }
         },
-        "/products": {
-            "get": {
-                "description": "Retrieves a paginated list of products across all markets, including favorite status, with optional name search. Requires JWT authentication.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Products"
-                ],
-                "summary": "Get all products with pagination and search",
-                "parameters": [
+        "/api/market/products": {
+            "post": {
+                "security": [
                     {
-                        "type": "integer",
-                        "description": "Page number (default: 1)",
-                        "name": "page",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Items per page (default: 10)",
-                        "name": "limit",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Search term for product name",
-                        "name": "search",
-                        "in": "query"
+                        "BearerAuth": []
                     }
                 ],
-                "responses": {}
-            },
-            "post": {
-                "description": "Creates a new product without thumbnails or sizes using JSON body. Requires JWT authentication.",
+                "description": "Creates a new product for the market admin's market. Requires JWT authentication.",
                 "consumes": [
                     "application/json"
                 ],
@@ -295,56 +194,13 @@ const docTemplate = `{
                 "responses": {}
             }
         },
-        "/products/{id}": {
-            "get": {
-                "description": "Retrieves a single product by its ID. Requires JWT authentication.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Products"
-                ],
-                "summary": "Get a product by ID",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Product ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {}
-            },
-            "delete": {
-                "description": "Deletes a product by ID, including its thumbnails and associated files. Requires JWT authentication.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Products"
-                ],
-                "summary": "Delete a product",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Product ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {}
-            }
-        },
-        "/products/{id}/thumbnails": {
+        "/api/market/products/{id}/thumbnails": {
             "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Adds multiple thumbnail images with associated colors to a product by ID. Requires JWT authentication.",
                 "consumes": [
                     "multipart/form-data"
@@ -382,6 +238,513 @@ const docTemplate = `{
                 "responses": {}
             }
         },
+        "/api/market/products/{product_id}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Updates a product for the market admin's market. Requires JWT authentication.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Products"
+                ],
+                "summary": "Update a product",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Product ID",
+                        "name": "product_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Product details",
+                        "name": "product",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.ProductRequest"
+                        }
+                    }
+                ],
+                "responses": {}
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Deletes a product and its thumbnails for the market admin's market. Requires JWT authentication.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Products"
+                ],
+                "summary": "Delete a product",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Product ID",
+                        "name": "product_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/api/market/sizes/{size_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Deletes a size by its ID. Requires JWT authentication.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Products"
+                ],
+                "summary": "Delete a size by ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Size ID",
+                        "name": "size_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/api/market/thumbnails/{thumbnail_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Deletes a thumbnail by its ID. Requires JWT authentication.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Products"
+                ],
+                "summary": "Delete a thumbnail",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Thumbnail ID",
+                        "name": "thumbnail_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/api/market/thumbnails/{thumbnail_id}/size": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Adds a size with count linked to a thumbnail. Requires JWT authentication.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Products"
+                ],
+                "summary": "Add a size by thumbnail ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Thumbnail ID",
+                        "name": "thumbnail_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Size and count",
+                        "name": "size",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.SizeRequest"
+                        }
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/api/superadmin/categories": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Creates a category with name and optional thumbnail image. Requires superadmin JWT authentication.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Categories"
+                ],
+                "summary": "Create a new category",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Category name",
+                        "name": "name",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "file",
+                        "description": "Thumbnail image",
+                        "name": "thumbnail",
+                        "in": "formData"
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/api/superadmin/categories/{category_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Deletes a category and its thumbnail image. Requires superadmin JWT authentication.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Categories"
+                ],
+                "summary": "Delete a category",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Category ID",
+                        "name": "category_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/api/superadmin/markets": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Creates a new market with an admin account and optional thumbnail image. Requires superadmin JWT authentication.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Markets"
+                ],
+                "summary": "Create a new market",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Market name",
+                        "name": "name",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Admin username",
+                        "name": "username",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Admin full name",
+                        "name": "full_name",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Admin phone",
+                        "name": "phone",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "number",
+                        "description": "Delivery price",
+                        "name": "delivery_price",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Admin password",
+                        "name": "password",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "file",
+                        "description": "Thumbnail image",
+                        "name": "thumbnail",
+                        "in": "formData"
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/api/superadmin/markets/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Deletes a market, its products, and thumbnails. Requires superadmin JWT authentication.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Markets"
+                ],
+                "summary": "Delete a market",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Market ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/categories": {
+            "get": {
+                "description": "Retrieves a paginated list of categories with optional name search. Requires superadmin JWT authentication.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Categories"
+                ],
+                "summary": "Get categories",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Page number (default: 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Items per page (default: 10)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Search by category name",
+                        "name": "search",
+                        "in": "query"
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/login": {
+            "post": {
+                "description": "Initiates login by sending a verification code to the user's phone number. Checks if the phone is registered and logs the code.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Initiate user login",
+                "parameters": [
+                    {
+                        "description": "User login details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.LoginRequest"
+                        }
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/market/login": {
+            "post": {
+                "description": "Authenticates a market admin and returns a JWT token.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Login market admin",
+                "parameters": [
+                    {
+                        "description": "Market admin credentials",
+                        "name": "credentials",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.MarketRequest"
+                        }
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/markets": {
+            "get": {
+                "description": "Retrieves a list of all markets. Requires JWT authentication.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Markets"
+                ],
+                "summary": "Get all markets",
+                "responses": {}
+            }
+        },
+        "/markets/{id}": {
+            "get": {
+                "description": "Retrieves market details and its products by market ID.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Markets"
+                ],
+                "summary": "Get market by ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Market ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/products": {
+            "get": {
+                "description": "Retrieves paginated products with optional category and name search",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Products"
+                ],
+                "summary": "Get all products",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Category ID",
+                        "name": "category_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page number (default: 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Items per page (default: 10)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Search by product name",
+                        "name": "search",
+                        "in": "query"
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/products/{id}": {
+            "get": {
+                "description": "Retrieves a single product by its ID. Requires JWT authentication.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Products"
+                ],
+                "summary": "Get a product by ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Product ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
         "/register": {
             "post": {
                 "description": "Registers a new user with a full name and phone number, sending a verification code. Validates input, checks for duplicate phone numbers, and logs the code (replace with SMS in production).",
@@ -409,23 +772,55 @@ const docTemplate = `{
                 "responses": {}
             }
         },
-        "/sizes/{size_id}": {
-            "delete": {
-                "description": "Deletes a size by its ID from the sizes table. Requires JWT authentication.",
+        "/superadmin/login": {
+            "post": {
+                "description": "Authenticates a superadmin and returns a JWT token.",
+                "consumes": [
+                    "application/json"
+                ],
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "Products"
+                    "Superadmin"
                 ],
-                "summary": "Delete a size by ID",
+                "summary": "Login superadmin",
                 "parameters": [
                     {
-                        "type": "string",
-                        "description": "Size ID",
-                        "name": "size_id",
-                        "in": "path",
-                        "required": true
+                        "description": "Superadmin credentials",
+                        "name": "credentials",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.SuperadminRequest"
+                        }
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/superadmin/register": {
+            "post": {
+                "description": "Registers a new superadmin with username, full name, phone, and password.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Superadmin"
+                ],
+                "summary": "Register a new superadmin",
+                "parameters": [
+                    {
+                        "description": "Superadmin details",
+                        "name": "superadmin",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.SuperadminRegisterRequest"
+                        }
                     }
                 ],
                 "responses": {}
@@ -447,34 +842,9 @@ const docTemplate = `{
                 "responses": {}
             }
         },
-        "/thumbnails/{thumbnail_id}": {
-            "delete": {
-                "description": "Deletes a thumbnail by its ID, including its file from uploads. Requires JWT authentication.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Products"
-                ],
-                "summary": "Delete a thumbnail",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Thumbnail ID",
-                        "name": "thumbnail_id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {}
-            }
-        },
-        "/thumbnails/{thumbnail_id}/size": {
+        "/users/register": {
             "post": {
-                "description": "Adds a single size with its count for a product associated with a specific thumbnail ID using JSON body. Requires JWT authentication.",
+                "description": "Registers a user and sends OTP.",
                 "consumes": [
                     "application/json"
                 ],
@@ -482,24 +852,17 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "Products"
+                    "Authentication"
                 ],
-                "summary": "Add a size with count by thumbnail ID",
+                "summary": "Register user",
                 "parameters": [
                     {
-                        "type": "string",
-                        "description": "Thumbnail ID",
-                        "name": "thumbnail_id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Size and count",
-                        "name": "size",
+                        "description": "User details",
+                        "name": "user",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/api.SizeRequest"
+                            "$ref": "#/definitions/api.UserRegisterRequest"
                         }
                     }
                 ],
@@ -535,6 +898,26 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "api.CartRequest": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "market_id": {
+                    "type": "integer"
+                },
+                "product_id": {
+                    "type": "integer"
+                },
+                "size_id": {
+                    "type": "integer"
+                },
+                "thumbnail_id": {
+                    "type": "integer"
+                }
+            }
+        },
         "api.FavoriteRequest": {
             "type": "object",
             "properties": {
@@ -555,23 +938,34 @@ const docTemplate = `{
                 }
             }
         },
+        "api.MarketRequest": {
+            "type": "object",
+            "properties": {
+                "password": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
         "api.ProductRequest": {
             "type": "object",
             "properties": {
+                "category_id": {
+                    "type": "integer"
+                },
                 "description": {
                     "type": "string"
                 },
                 "discount": {
-                    "type": "string"
-                },
-                "market_id": {
-                    "type": "string"
+                    "type": "number"
                 },
                 "name": {
                     "type": "string"
                 },
                 "price": {
-                    "type": "string"
+                    "type": "number"
                 }
             }
         },
@@ -603,6 +997,28 @@ const docTemplate = `{
                 }
             }
         },
+        "api.SuperadminRequest": {
+            "type": "object",
+            "properties": {
+                "password": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.UserRegisterRequest": {
+            "type": "object",
+            "properties": {
+                "full_name": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                }
+            }
+        },
         "api.VerifyCodeRequest": {
             "type": "object",
             "required": [
@@ -617,6 +1033,23 @@ const docTemplate = `{
                 "phone": {
                     "type": "string",
                     "example": "+12345678901"
+                }
+            }
+        },
+        "models.SuperadminRegisterRequest": {
+            "type": "object",
+            "properties": {
+                "full_name": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
                 }
             }
         }
