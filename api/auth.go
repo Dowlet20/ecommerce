@@ -218,7 +218,7 @@ func (h *Handler) verifyCode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Generate JWT
-	token, err := generateJWT(userID)
+	token, err := h.generateJWT(userID, 0, "user")
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to generate token")
 		return

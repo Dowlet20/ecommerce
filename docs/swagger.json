@@ -16,7 +16,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retrieves the user's cart grouped by markets. Requires user JWT authentication.",
+                "description": "Retrieves the user's cart grouped by cart order and markets. Requires user JWT authentication.",
                 "produces": [
                     "application/json"
                 ],
@@ -32,7 +32,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Adds or updates a product in the user's cart. Requires user JWT authentication.",
+                "description": "Adds or updates multiple products in the user's cart for a market under a single cart order. Requires user JWT authentication.",
                 "consumes": [
                     "application/json"
                 ],
@@ -51,6 +51,72 @@
                         "required": true,
                         "schema": {
                             "$ref": "#/definitions/api.CartRequest"
+                        }
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/api/cart/{cart_order_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Deletes all entries for a user's cart order by cart_order_id. Requires user JWT authentication.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Cart"
+                ],
+                "summary": "Delete cart",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cart Order ID",
+                        "name": "cart_order_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/api/cart/{cart_order_id}/order": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Submits an order for a cart order with location and user details. Requires user JWT authentication.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Orders"
+                ],
+                "summary": "Create order",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cart Order ID",
+                        "name": "cart_order_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Order details",
+                        "name": "order",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.OrderRequest"
                         }
                     }
                 ],
@@ -119,6 +185,81 @@
                 "responses": {}
             }
         },
+        "/api/locations": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieves all locations for the authenticated user.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Locations"
+                ],
+                "summary": "Get user locations",
+                "responses": {}
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Adds a new location with name and address for the authenticated user.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Locations"
+                ],
+                "summary": "Add location",
+                "parameters": [
+                    {
+                        "description": "Location details",
+                        "name": "location",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.LocationRequest"
+                        }
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/api/locations/{location_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Deletes a specific location for the authenticated user if no orders reference it. Requires user JWT authentication.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Locations"
+                ],
+                "summary": "Delete location",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Location ID",
+                        "name": "location_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
         "/api/market/markets/{id}/thumbnail": {
             "post": {
                 "security": [
@@ -150,6 +291,59 @@
                         "description": "Thumbnail image",
                         "name": "thumbnail",
                         "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/api/market/orders": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieves all orders for the market admin's market, optionally filtered by status. Requires market admin JWT authentication.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Market Admin"
+                ],
+                "summary": "Get market admin orders",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Order status (pending, processing, delivered, cancelled)",
+                        "name": "status",
+                        "in": "query"
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/api/market/orders/{cart_order_id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieves detailed order information for a specific cart_order_id. Requires market admin JWT authentication.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Market Admin"
+                ],
+                "summary": "Get market admin order by ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cart Order ID",
+                        "name": "cart_order_id",
+                        "in": "path",
                         "required": true
                     }
                 ],
@@ -895,20 +1089,14 @@
         "api.CartRequest": {
             "type": "object",
             "properties": {
-                "count": {
-                    "type": "integer"
-                },
                 "market_id": {
                     "type": "integer"
                 },
-                "product_id": {
-                    "type": "integer"
-                },
-                "size_id": {
-                    "type": "integer"
-                },
-                "thumbnail_id": {
-                    "type": "integer"
+                "products": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.CartProductReq"
+                    }
                 }
             }
         },
@@ -917,6 +1105,17 @@
             "properties": {
                 "product_id": {
                     "type": "integer"
+                }
+            }
+        },
+        "api.LocationRequest": {
+            "type": "object",
+            "properties": {
+                "location_address": {
+                    "type": "string"
+                },
+                "location_name": {
+                    "type": "string"
                 }
             }
         },
@@ -939,6 +1138,23 @@
                     "type": "string"
                 },
                 "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.OrderRequest": {
+            "type": "object",
+            "properties": {
+                "location_id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "notes": {
+                    "type": "string"
+                },
+                "phone": {
                     "type": "string"
                 }
             }
@@ -986,6 +1202,9 @@
                 "count": {
                     "type": "integer"
                 },
+                "price": {
+                    "type": "number"
+                },
                 "size": {
                     "type": "string"
                 }
@@ -1027,6 +1246,23 @@
                 "phone": {
                     "type": "string",
                     "example": "+12345678901"
+                }
+            }
+        },
+        "models.CartProductReq": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "product_id": {
+                    "type": "integer"
+                },
+                "size_id": {
+                    "type": "integer"
+                },
+                "thumbnail_id": {
+                    "type": "integer"
                 }
             }
         },

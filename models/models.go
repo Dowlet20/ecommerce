@@ -46,17 +46,18 @@ type VerificationCode struct {
 }
 
 type Product struct {
-	ID          int         `json:"id"`
-	MarketID    int         `json:"market_id"`
-	MarketName  string      `json:"market_name"`
-	CategoryID  int         `json:"category_id"`
-	Name        string      `json:"name"`
-	Price       float64     `json:"price"`
-	Discount    float64     `json:"discount"`
-	Description string      `json:"description"`
-	CreatedAt   string      `json:"created_at"`
-	IsFavorite  bool        `json:"is_favorite"`
-	Thumbnails  []Thumbnail `json:"thumbnails"`
+	ID           int         `json:"id"`
+	MarketID     int         `json:"market_id"`
+	MarketName   string      `json:"market_name"`
+	CategoryID   int         `json:"category_id"`
+	ThumbnailURL string      `json:"thumbnail_url"`
+	Name         string      `json:"name"`
+	Price        float64     `json:"price"`
+	Discount     float64     `json:"discount"`
+	Description  string      `json:"description"`
+	CreatedAt    string      `json:"created_at"`
+	IsFavorite   bool        `json:"is_favorite"`
+	Thumbnails   []Thumbnail `json:"thumbnails"`
 }
 
 type Thumbnail struct {
@@ -68,10 +69,11 @@ type Thumbnail struct {
 }
 
 type Size struct {
-	ID          int    `json:"id"`
-	ThumbnailID int    `json:"thumbnail_id"`
-	Size        string `json:"size"`
-	Count       int    `json:"count"`
+	ID          int     `json:"id"`
+	ThumbnailID int     `json:"thumbnail_id"`
+	Size        string  `json:"size"`
+	Count       int     `json:"count"`
+	Price       float64 `json:"price"`
 }
 
 type AuthClaims struct {
@@ -95,6 +97,7 @@ type Category struct {
 
 // CartMarket represents a market in a user's cart
 type CartMarket struct {
+	MarketID      int           `json:"market_id"`
 	MarketName    string        `json:"market_name"`
 	DeliveryPrice float64       `json:"delivery_price"`
 	UserID        int           `json:"user_id"`
@@ -111,4 +114,68 @@ type CartProduct struct {
 	Color        string  `json:"color"`
 	Size         string  `json:"size"`
 	Count        int     `json:"count"`
+}
+
+// CartProductReq represents a product to add to the cart
+type CartProductReq struct {
+	ProductID   int `json:"product_id"`
+	ThumbnailID int `json:"thumbnail_id"`
+	SizeID      int `json:"size_id"`
+	Count       int `json:"count"`
+}
+
+// Location represents a user's saved location
+type Location struct {
+	ID              int    `json:"id"`
+	UserID          int    `json:"user_id"`
+	LocationName    string `json:"location_name"`
+	LocationAddress string `json:"location_address"`
+}
+
+// Order represents a user order
+type Order struct {
+	ID          int    `json:"id"`
+	UserID      int    `json:"user_id"`
+	CartOrderID int    `json:"cart_order_id"`
+	LocationID  int    `json:"location_id"`
+	Name        string `json:"name"`
+	Phone       string `json:"phone"`
+	Notes       string `json:"notes"`
+	Status      string `json:"status"`
+	CreatedAt   string `json:"created_at"`
+}
+
+type MarketAdminOrder struct {
+	CartOrderID     int     `json:"cart_order_id"`
+	LocationAddress string  `json:"location_address"`
+	Status          string  `json:"status"`
+	Name            string  `json:"name"`
+	CreatedAt       string  `json:"created_at"`
+	Sum             float64 `json:"sum"`
+}
+
+
+// MarketAdminOrderDetail represents a detailed order view for market admins
+type MarketAdminOrderDetail struct {
+    CartOrderID     int                       `json:"cart_order_id"`
+    Name            string                    `json:"name"`
+    Status          string                    `json:"status"`
+    LocationAddress string                    `json:"location_address"`
+    CreatedAt       string                    `json:"created_at"`
+    Sum             float64                   `json:"sum"`
+    Products        []MarketAdminOrderProduct `json:"products"`
+}
+
+// MarketAdminOrderProduct represents a product in an order for market admins
+type MarketAdminOrderProduct struct {
+    ID        int     `json:"id"`
+    Name      string  `json:"name"`
+    Price     float64 `json:"price"`
+    ImageURL  string  `json:"image_url"`
+    Discount  float64 `json:"discount"`
+    CreatedAt string  `json:"created_at"`
+    Size      string  `json:"size"`
+    SizePrice float64 `json:"size_price"`
+    Count     int64   `json:"count"`
+    Sum       float64 `json:"sum"`
 }

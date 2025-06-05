@@ -64,6 +64,8 @@ func (h *Handler) SetupRoutes(router *mux.Router) {
 	marketAdmin.HandleFunc("/sizes/{size_id}", h.deleteSizeByID).Methods("DELETE", "OPTIONS")
 	marketAdmin.HandleFunc("/thumbnails/{thumbnail_id}", h.deleteThumbnail).Methods("DELETE", "OPTIONS")
 	marketAdmin.HandleFunc("/markets/{id}/thumbnail", h.uploadMarketThumbnail).Methods("POST", "OPTIONS")
+	marketAdmin.HandleFunc("/orders", h.getMarketAdminOrders).Methods("GET", "OPTIONS")
+	marketAdmin.HandleFunc("/orders/{cart_order_id}", h.getMarketAdminOrderByID).Methods("GET", "OPTIONS")
 
 	// User protected routes
 	userProtected := router.PathPrefix("/api").Subrouter()
@@ -72,6 +74,11 @@ func (h *Handler) SetupRoutes(router *mux.Router) {
 	userProtected.HandleFunc("/favorites", h.toggleFavorite).Methods("POST", "OPTIONS")
 	userProtected.HandleFunc("/cart", h.addToCart).Methods("POST", "OPTIONS")
 	userProtected.HandleFunc("/cart", h.getCart).Methods("GET", "OPTIONS")
+	userProtected.HandleFunc("/cart/{cart_order_id}", h.deleteCart).Methods("DELETE", "OPTIONS")
+	userProtected.HandleFunc("/locations", h.addLocation).Methods("POST", "OPTIONS")
+	userProtected.HandleFunc("/locations", h.getLocations).Methods("GET", "OPTIONS")
+	userProtected.HandleFunc("/cart/{cart_order_id}/order", h.createOrder).Methods("POST", "OPTIONS")
+	userProtected.HandleFunc("/locations/{location_id}", h.deleteLocation).Methods("DELETE", "OPTIONS")
 
 	// Public routes
 	router.HandleFunc("/superadmin/register", h.registerSuperadmin).Methods("POST", "OPTIONS")
@@ -105,6 +112,7 @@ type ProductRequest struct {
 type SizeRequest struct {
 	Size  string `json:"size"`
 	Count int    `json:"count"`
+	Price float64 `json:"price"`
 }
 
 // FavoriteRequest for toggling favorite
@@ -1088,7 +1096,7 @@ func (h *Handler) addSizeByThumbnail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.db.CreateSizeByThumbnailID(claims.MarketID, thumbnailID, req.Size, req.Count)
+	err := h.db.CreateSizeByThumbnailID(claims.MarketID, thumbnailID, req.Size, req.Count, req.Price)
 	if err != nil {
 		if err.Error() == "thumbnail not found or unauthorized" {
 			respondError(w, http.StatusNotFound, err.Error())
@@ -1346,18 +1354,26 @@ func (h *Handler) getCategories(w http.ResponseWriter, r *http.Request) {
 }
 
 
-// CartRequest for adding a product to the cart
+// // CartRequest for adding a product to the cart
+// type CartRequest struct {
+//     MarketID    int `json:"market_id"`
+//     ProductID   int `json:"product_id"`
+//     ThumbnailID int `json:"thumbnail_id"`
+//     SizeID      int `json:"size_id"`
+//     Count       int `json:"count"`
+// }
+
+// CartRequest for adding products to the cart
 type CartRequest struct {
-    MarketID    int `json:"market_id"`
-    ProductID   int `json:"product_id"`
-    ThumbnailID int `json:"thumbnail_id"`
-    SizeID      int `json:"size_id"`
-    Count       int `json:"count"`
+    MarketID int              `json:"market_id"`
+    Products []models.CartProductReq `json:"products"`
 }
 
-// addToCart adds a product to the user's cart
+
+
+// addToCart adds products to the user's cart
 // @Summary Add to cart
-// @Description Adds or updates a product in the user's cart. Requires user JWT authentication.
+// @Description Adds or updates multiple products in the user's cart for a market under a single cart order. Requires user JWT authentication.
 // @Tags Cart
 // @Accept json
 // @Produce json
@@ -1377,14 +1393,21 @@ func (h *Handler) addToCart(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    if req.MarketID <= 0 || req.ProductID <= 0 || req.ThumbnailID <= 0 || req.SizeID <= 0 || req.Count <= 0 {
-        respondError(w, http.StatusBadRequest, "Invalid or missing fields")
+    if req.MarketID <= 0 || len(req.Products) == 0 {
+        respondError(w, http.StatusBadRequest, "Invalid or missing market_id or products")
         return
     }
 
-    cartID, err := h.db.AddToCart(claims.UserID, req.MarketID, req.ProductID, req.ThumbnailID, req.SizeID, req.Count)
+    for _, prod := range req.Products {
+        if prod.ProductID <= 0 || prod.ThumbnailID <= 0 || prod.SizeID <= 0 || prod.Count <= 0 {
+            respondError(w, http.StatusBadRequest, fmt.Sprintf("Invalid fields for product_id %d", prod.ProductID))
+            return
+        }
+    }
+
+    cartOrderID, err := h.db.AddToCart(claims.UserID, req.MarketID, req.Products)
     if err != nil {
-        if err.Error() == "invalid market, product, thumbnail, or size" {
+        if strings.Contains(err.Error(), "invalid market") {
             respondError(w, http.StatusBadRequest, err.Error())
             return
         }
@@ -1392,13 +1415,13 @@ func (h *Handler) addToCart(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    respondJSON(w, http.StatusOK, map[string]int{"cart_id": cartID})
+    respondJSON(w, http.StatusOK, map[string]int{"cart_order_id": cartOrderID})
 }
 
 
 // getCart retrieves the user's cart
 // @Summary Get user cart
-// @Description Retrieves the user's cart grouped by markets. Requires user JWT authentication.
+// @Description Retrieves the user's cart grouped by cart order and markets. Requires user JWT authentication.
 // @Tags Cart
 // @Produce json
 // @Security BearerAuth
@@ -1417,4 +1440,290 @@ func (h *Handler) getCart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, cart)
+}
+
+
+// deleteCart deletes a user's cart order
+// @Summary Delete cart
+// @Description Deletes all entries for a user's cart order by cart_order_id. Requires user JWT authentication.
+// @Tags Cart
+// @Produce json
+// @Security BearerAuth
+// @Param cart_order_id path string true "Cart Order ID"
+// @Router /api/cart/{cart_order_id} [delete]
+func (h *Handler) deleteCart(w http.ResponseWriter, r *http.Request) {
+	claims, ok := r.Context().Value("claims").(*models.Claims)
+	if !ok || claims.UserID == 0 || claims.Role != "user" {
+		respondError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	vars := mux.Vars(r)
+	cartOrderIDStr := vars["cart_order_id"]
+	cartOrderID, err := strconv.Atoi(cartOrderIDStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid cart order ID")
+		return
+	}
+
+	err = h.db.DeleteCart(claims.UserID, cartOrderID)
+	if err != nil {
+		if err.Error() == "cart not found or not owned by user" {
+			respondError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"message": "Cart deleted successfully"})
+}
+
+// LocationRequest for adding a new location
+type LocationRequest struct {
+    LocationName    string `json:"location_name"`
+    LocationAddress string `json:"location_address"`
+}
+
+// OrderRequest for submitting an order
+type OrderRequest struct {
+    LocationID int    `json:"location_id"`
+    Name       string `json:"name"`
+    Phone      string `json:"phone"`
+    Notes      string `json:"notes"`
+}
+
+// addLocation adds a new location for the user
+// @Summary Add location
+// @Description Adds a new location with name and address for the authenticated user.
+// @Tags Locations
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param location body LocationRequest true "Location details"
+// @Router /api/locations [post]
+func (h *Handler) addLocation(w http.ResponseWriter, r *http.Request) {
+    claims, ok := r.Context().Value("claims").(*models.Claims)
+    if !ok || claims.UserID == 0 || claims.Role != "user" {
+        respondError(w, http.StatusUnauthorized, "Unauthorized")
+        return
+    }
+
+    var req LocationRequest
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        respondError(w, http.StatusBadRequest, "Error parsing JSON body")
+        return
+    }
+
+    if req.LocationName == "" || req.LocationAddress == "" {
+        respondError(w, http.StatusBadRequest, "Location name and address are required")
+        return
+    }
+
+    locationID, err := h.db.CreateLocation(claims.UserID, req.LocationName, req.LocationAddress)
+    if err != nil {
+        if err.Error() == "location name already exists for user" {
+            respondError(w, http.StatusConflict, err.Error())
+            return
+        }
+        respondError(w, http.StatusInternalServerError, err.Error())
+        return
+    }
+
+    respondJSON(w, http.StatusOK, map[string]int{"location_id": locationID})
+}
+
+
+// getLocations retrieves the user's locations
+// @Summary Get user locations
+// @Description Retrieves all locations for the authenticated user.
+// @Tags Locations
+// @Produce json
+// @Security BearerAuth
+// @Router /api/locations [get]
+func (h *Handler) getLocations(w http.ResponseWriter, r *http.Request) {
+    claims, ok := r.Context().Value("claims").(*models.Claims)
+    if !ok || claims.UserID == 0 || claims.Role != "user" {
+        respondError(w, http.StatusUnauthorized, "Unauthorized")
+        return
+    }
+
+    locations, err := h.db.GetUserLocations(claims.UserID)
+    if err != nil {
+        respondError(w, http.StatusInternalServerError, err.Error())
+        return
+    }
+
+    respondJSON(w, http.StatusOK, locations)
+}
+
+
+// createOrder submits an order for a cart
+// @Summary Create order
+// @Description Submits an order for a cart order with location and user details. Requires user JWT authentication.
+// @Tags Orders
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param cart_order_id path string true "Cart Order ID"
+// @Param order body OrderRequest true "Order details"
+// @Router /api/cart/{cart_order_id}/order [post]
+func (h *Handler) createOrder(w http.ResponseWriter, r *http.Request) {
+    claims, ok := r.Context().Value("claims").(*models.Claims)
+    if !ok || claims.UserID == 0 || claims.Role != "user" {
+        respondError(w, http.StatusUnauthorized, "Unauthorized")
+        return
+    }
+
+    vars := mux.Vars(r)
+    cartOrderIDStr := vars["cart_order_id"]
+    cartOrderID, err := strconv.Atoi(cartOrderIDStr)
+    if err != nil {
+        respondError(w, http.StatusBadRequest, "Invalid cart order ID")
+        return
+    }
+
+    var req OrderRequest
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        respondError(w, http.StatusBadRequest, "Error parsing JSON body")
+        return
+    }
+
+    if req.LocationID <= 0 || req.Name == "" || req.Phone == "" {
+        respondError(w, http.StatusBadRequest, "Missing required fields")
+        return
+    }
+
+    orderID, err := h.db.CreateOrder(claims.UserID, cartOrderID, req.LocationID, req.Name, req.Phone, req.Notes)
+    if err != nil {
+        if err.Error() == "cart not found or not owned by user" || err.Error() == "location not found or not owned by user" {
+            respondError(w, http.StatusNotFound, err.Error())
+            return
+        }
+        if err.Error() == "order already exists for this cart" {
+            respondError(w, http.StatusConflict, err.Error())
+            return
+        }
+        respondError(w, http.StatusInternalServerError, err.Error())
+        return
+    }
+
+    respondJSON(w, http.StatusOK, map[string]int{"order_id": orderID})
+}
+
+// getMarketAdminOrders retrieves orders for a market admin's market
+// @Summary Get market admin orders
+// @Description Retrieves all orders for the market admin's market, optionally filtered by status. Requires market admin JWT authentication.
+// @Tags Market Admin
+// @Produce json
+// @Security BearerAuth
+// @Param status query string false "Order status (pending, processing, delivered, cancelled)"
+// @Router /api/market/orders [get]
+func (h *Handler) getMarketAdminOrders(w http.ResponseWriter, r *http.Request) {
+	claims, ok := r.Context().Value("claims").(*models.Claims)
+	if !ok || claims.MarketID == 0 || claims.Role != "market_admin" {
+		respondError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	status := r.URL.Query().Get("status")
+	if status != "" {
+		validStatuses := map[string]bool{
+			"pending":    true,
+			"processing": true,
+			"delivered":  true,
+			"cancelled":  true,
+		}
+		if !validStatuses[status] {
+			respondError(w, http.StatusBadRequest, "Invalid status. Must be one of: pending, processing, delivered, cancelled")
+			return
+		}
+	}
+
+	orders, err := h.db.GetMarketAdminOrders(claims.MarketID, status)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, orders)
+}
+
+
+
+// getMarketAdminOrderByID retrieves a specific order by cart_order_id for a market admin
+// @Summary Get market admin order by ID
+// @Description Retrieves detailed order information for a specific cart_order_id. Requires market admin JWT authentication.
+// @Tags Market Admin
+// @Produce json
+// @Security BearerAuth
+// @Param cart_order_id path string true "Cart Order ID"
+// @Router /api/market/orders/{cart_order_id} [get]
+func (h *Handler) getMarketAdminOrderByID(w http.ResponseWriter, r *http.Request) {
+	claims, ok := r.Context().Value("claims").(*models.Claims)
+	if !ok || claims.MarketID == 0 || claims.Role != "market_admin" {
+		respondError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	vars := mux.Vars(r)
+	cartOrderIDStr := vars["cart_order_id"]
+	cartOrderID, err := strconv.Atoi(cartOrderIDStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid cart order ID")
+		return
+	}
+
+	order, err := h.db.GetMarketAdminOrderByID(claims.MarketID, cartOrderID)
+	if err != nil {
+		if err.Error() == "order not found or not for this market" {
+			respondError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, order)
+}
+
+
+// deleteLocation deletes a user's location
+// @Summary Delete location
+// @Description Deletes a specific location for the authenticated user if no orders reference it. Requires user JWT authentication.
+// @Tags Locations
+// @Produce json
+// @Security BearerAuth
+// @Param location_id path string true "Location ID"
+// @Router /api/locations/{location_id} [delete]
+func (h *Handler) deleteLocation(w http.ResponseWriter, r *http.Request) {
+	claims, ok := r.Context().Value("claims").(*models.Claims)
+	if !ok || claims.UserID == 0 || claims.Role != "user" {
+		respondError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	vars := mux.Vars(r)
+	locationIDStr := vars["location_id"]
+	locationID, err := strconv.Atoi(locationIDStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid location ID")
+		return
+	}
+
+	err = h.db.DeleteLocation(claims.UserID, locationID)
+	if err != nil {
+		if err.Error() == "location not found or not owned by user" {
+			respondError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		if err.Error() == "location is referenced by orders and cannot be deleted" {
+			respondError(w, http.StatusConflict, err.Error())
+			return
+		}
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"message": "Location deleted successfully"})
 }

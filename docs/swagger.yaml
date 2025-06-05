@@ -2,21 +2,24 @@ basePath: /
 definitions:
   api.CartRequest:
     properties:
-      count:
-        type: integer
       market_id:
         type: integer
-      product_id:
-        type: integer
-      size_id:
-        type: integer
-      thumbnail_id:
-        type: integer
+      products:
+        items:
+          $ref: '#/definitions/models.CartProductReq'
+        type: array
     type: object
   api.FavoriteRequest:
     properties:
       product_id:
         type: integer
+    type: object
+  api.LocationRequest:
+    properties:
+      location_address:
+        type: string
+      location_name:
+        type: string
     type: object
   api.LoginRequest:
     properties:
@@ -31,6 +34,17 @@ definitions:
       password:
         type: string
       username:
+        type: string
+    type: object
+  api.OrderRequest:
+    properties:
+      location_id:
+        type: integer
+      name:
+        type: string
+      notes:
+        type: string
+      phone:
         type: string
     type: object
   api.ProductRequest:
@@ -62,6 +76,8 @@ definitions:
     properties:
       count:
         type: integer
+      price:
+        type: number
       size:
         type: string
     type: object
@@ -91,6 +107,17 @@ definitions:
     - code
     - phone
     type: object
+  models.CartProductReq:
+    properties:
+      count:
+        type: integer
+      product_id:
+        type: integer
+      size_id:
+        type: integer
+      thumbnail_id:
+        type: integer
+    type: object
   models.SuperadminRegisterRequest:
     properties:
       full_name:
@@ -112,8 +139,8 @@ info:
 paths:
   /api/cart:
     get:
-      description: Retrieves the user's cart grouped by markets. Requires user JWT
-        authentication.
+      description: Retrieves the user's cart grouped by cart order and markets. Requires
+        user JWT authentication.
       produces:
       - application/json
       responses: {}
@@ -125,8 +152,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: Adds or updates a product in the user's cart. Requires user JWT
-        authentication.
+      description: Adds or updates multiple products in the user's cart for a market
+        under a single cart order. Requires user JWT authentication.
       parameters:
       - description: Cart entry details
         in: body
@@ -142,6 +169,50 @@ paths:
       summary: Add to cart
       tags:
       - Cart
+  /api/cart/{cart_order_id}:
+    delete:
+      description: Deletes all entries for a user's cart order by cart_order_id. Requires
+        user JWT authentication.
+      parameters:
+      - description: Cart Order ID
+        in: path
+        name: cart_order_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Delete cart
+      tags:
+      - Cart
+  /api/cart/{cart_order_id}/order:
+    post:
+      consumes:
+      - application/json
+      description: Submits an order for a cart order with location and user details.
+        Requires user JWT authentication.
+      parameters:
+      - description: Cart Order ID
+        in: path
+        name: cart_order_id
+        required: true
+        type: string
+      - description: Order details
+        in: body
+        name: order
+        required: true
+        schema:
+          $ref: '#/definitions/api.OrderRequest'
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Create order
+      tags:
+      - Orders
   /api/favorites:
     get:
       description: Retrieves a paginated list of favorite products. Requires JWT authentication.
@@ -181,6 +252,55 @@ paths:
       summary: Toggle favorite product
       tags:
       - Favorites
+  /api/locations:
+    get:
+      description: Retrieves all locations for the authenticated user.
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Get user locations
+      tags:
+      - Locations
+    post:
+      consumes:
+      - application/json
+      description: Adds a new location with name and address for the authenticated
+        user.
+      parameters:
+      - description: Location details
+        in: body
+        name: location
+        required: true
+        schema:
+          $ref: '#/definitions/api.LocationRequest'
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Add location
+      tags:
+      - Locations
+  /api/locations/{location_id}:
+    delete:
+      description: Deletes a specific location for the authenticated user if no orders
+        reference it. Requires user JWT authentication.
+      parameters:
+      - description: Location ID
+        in: path
+        name: location_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Delete location
+      tags:
+      - Locations
   /api/market/markets/{id}/thumbnail:
     post:
       consumes:
@@ -205,6 +325,41 @@ paths:
       summary: Upload market thumbnail
       tags:
       - Markets
+  /api/market/orders:
+    get:
+      description: Retrieves all orders for the market admin's market, optionally
+        filtered by status. Requires market admin JWT authentication.
+      parameters:
+      - description: Order status (pending, processing, delivered, cancelled)
+        in: query
+        name: status
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Get market admin orders
+      tags:
+      - Market Admin
+  /api/market/orders/{cart_order_id}:
+    get:
+      description: Retrieves detailed order information for a specific cart_order_id.
+        Requires market admin JWT authentication.
+      parameters:
+      - description: Cart Order ID
+        in: path
+        name: cart_order_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Get market admin order by ID
+      tags:
+      - Market Admin
   /api/market/products:
     post:
       consumes:
