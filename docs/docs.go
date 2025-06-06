@@ -38,7 +38,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Adds or updates multiple products in the user's cart for a market under a single cart order. Requires user JWT authentication.",
+                "description": "Adds or updates a product in the user's cart for a market under a single cart order. Requires user JWT authentication.",
                 "consumes": [
                     "application/json"
                 ],
@@ -56,7 +56,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/api.CartRequest"
+                            "$ref": "#/definitions/models.CartRequest"
                         }
                     }
                 ],
@@ -363,9 +363,9 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Creates a new product for the market admin's market. Requires JWT authentication.",
+                "description": "Creates a new product for the market admin's market with an optional thumbnail. Requires JWT authentication.",
                 "consumes": [
-                    "application/json"
+                    "multipart/form-data"
                 ],
                 "produces": [
                     "application/json"
@@ -376,13 +376,61 @@ const docTemplate = `{
                 "summary": "Create a new product",
                 "parameters": [
                     {
-                        "description": "Product details",
-                        "name": "product",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/api.ProductRequest"
-                        }
+                        "type": "string",
+                        "description": "Product name",
+                        "name": "name",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Product name in Russian",
+                        "name": "name_ru",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "number",
+                        "description": "Product price",
+                        "name": "price",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "number",
+                        "description": "Product discount (0-100)",
+                        "name": "discount",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Product description",
+                        "name": "description",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Product description in Russian",
+                        "name": "description_ru",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Category ID",
+                        "name": "category_id",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Is product active",
+                        "name": "is_active",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "file",
+                        "description": "Thumbnail image",
+                        "name": "thumbnail",
+                        "in": "formData"
                     }
                 ],
                 "responses": {}
@@ -418,6 +466,13 @@ const docTemplate = `{
                         "type": "string",
                         "description": "Comma-separated list of colors for thumbnails",
                         "name": "colors",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Comma-separated list of colors_ru for thumbnails",
+                        "name": "colors_ru",
                         "in": "formData",
                         "required": true
                     },
@@ -616,6 +671,13 @@ const docTemplate = `{
                         "required": true
                     },
                     {
+                        "type": "string",
+                        "description": "Category name_ru",
+                        "name": "name_ru",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
                         "type": "file",
                         "description": "Thumbnail image",
                         "name": "thumbnail",
@@ -680,15 +742,8 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Admin username",
-                        "name": "username",
-                        "in": "formData",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Admin full name",
-                        "name": "full_name",
+                        "description": "Market name russian",
+                        "name": "name_ru",
                         "in": "formData",
                         "required": true
                     },
@@ -1092,20 +1147,6 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "api.CartRequest": {
-            "type": "object",
-            "properties": {
-                "market_id": {
-                    "type": "integer"
-                },
-                "products": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/models.CartProductReq"
-                    }
-                }
-            }
-        },
         "api.FavoriteRequest": {
             "type": "object",
             "properties": {
@@ -1143,7 +1184,7 @@ const docTemplate = `{
                 "password": {
                     "type": "string"
                 },
-                "username": {
+                "phone": {
                     "type": "string"
                 }
             }
@@ -1174,10 +1215,19 @@ const docTemplate = `{
                 "description": {
                     "type": "string"
                 },
+                "description_ru": {
+                    "type": "string"
+                },
                 "discount": {
                     "type": "number"
                 },
+                "is_active": {
+                    "type": "boolean"
+                },
                 "name": {
+                    "type": "string"
+                },
+                "name_ru": {
                     "type": "string"
                 },
                 "price": {
@@ -1255,7 +1305,7 @@ const docTemplate = `{
                 }
             }
         },
-        "models.CartProductReq": {
+        "models.CartRequest": {
             "type": "object",
             "properties": {
                 "count": {

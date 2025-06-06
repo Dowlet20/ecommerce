@@ -29,6 +29,9 @@ func main() {
 	defer dbService.Close()
 
 	router := mux.NewRouter()
+
+	// Add static file serving for /uploads/
+	router.PathPrefix("/uploads/").Handler(http.StripPrefix("/uploads/", http.FileServer(http.Dir("uploads"))))
 	handler := api.NewHandler(dbService)
 	handler.SetupRoutes(router)
 

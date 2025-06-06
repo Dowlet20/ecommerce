@@ -15,11 +15,10 @@ type Claims struct {
 
 type Market struct {
 	ID            int     `json:"id"`
-	Username      string  `json:"username"`
-	FullName      string  `json:"full_name"`
 	Phone         string  `json:"phone"`
 	DeliveryPrice float64 `json:"delivery_price"`
 	Name          string  `json:"name"`
+	NameRu        string  `json:"name_ru"`
 	ThumbnailURL  string  `json:"thumbnail_url"`
 }
 
@@ -46,24 +45,28 @@ type VerificationCode struct {
 }
 
 type Product struct {
-	ID           int         `json:"id"`
-	MarketID     int         `json:"market_id"`
-	MarketName   string      `json:"market_name"`
-	CategoryID   int         `json:"category_id"`
-	ThumbnailURL string      `json:"thumbnail_url"`
-	Name         string      `json:"name"`
-	Price        float64     `json:"price"`
-	Discount     float64     `json:"discount"`
-	Description  string      `json:"description"`
-	CreatedAt    string      `json:"created_at"`
-	IsFavorite   bool        `json:"is_favorite"`
-	Thumbnails   []Thumbnail `json:"thumbnails"`
+	ID            int         `json:"id"`
+	MarketID      int         `json:"market_id"`
+	MarketName    string      `json:"market_name"`
+	MarketNameRu  string      `json:"market_name_ru"`
+	CategoryID    int         `json:"category_id"`
+	ThumbnailURL  string      `json:"thumbnail_url"`
+	Name          string      `json:"name"`
+	NameRu        string      `json:"name_ru"`
+	Price         float64     `json:"price"`
+	Discount      float64     `json:"discount"`
+	Description   string      `json:"description"`
+	DescriptionRu string      `json:"description_ru"`
+	CreatedAt     string      `json:"created_at"`
+	IsFavorite    bool        `json:"is_favorite"`
+	Thumbnails    []Thumbnail `json:"thumbnails"`
 }
 
 type Thumbnail struct {
 	ID        int    `json:"id"`
 	ProductID int    `json:"product_id"`
 	Color     string `json:"color"`
+	ColorRu   string `json:"color_ru"`
 	ImageURL  string `json:"image_url"`
 	Sizes     []Size `json:"sizes"`
 }
@@ -92,6 +95,7 @@ type SuperadminRegisterRequest struct {
 type Category struct {
 	ID           int    `json:"id"`
 	Name         string `json:"name"`
+	NameRu       string `json:"name_ru"`
 	ThumbnailURL string `json:"thumbnail_url"`
 }
 
@@ -99,6 +103,7 @@ type Category struct {
 type CartMarket struct {
 	MarketID      int           `json:"market_id"`
 	MarketName    string        `json:"market_name"`
+	MarketNameRu  string        `json:"market_name_ru"`
 	DeliveryPrice float64       `json:"delivery_price"`
 	UserID        int           `json:"user_id"`
 	CartID        int           `json:"cart_id"`
@@ -109,10 +114,14 @@ type CartMarket struct {
 type CartProduct struct {
 	ThumbnailURL string  `json:"thumbnail_url"`
 	Name         string  `json:"name"`
+	NameRu       string  `json:"name_ru"`
 	Price        float64 `json:"price"`
 	Discount     float64 `json:"discount"`
 	Color        string  `json:"color"`
+	ColorRu      string  `json:"color_ru"`
 	Size         string  `json:"size"`
+	SizePrice    float64 `json:"size_price"`
+	Sum          float64 `json:"sum"`
 	Count        int     `json:"count"`
 }
 
@@ -154,28 +163,34 @@ type MarketAdminOrder struct {
 	Sum             float64 `json:"sum"`
 }
 
-
 // MarketAdminOrderDetail represents a detailed order view for market admins
 type MarketAdminOrderDetail struct {
-    CartOrderID     int                       `json:"cart_order_id"`
-    Name            string                    `json:"name"`
-    Status          string                    `json:"status"`
-    LocationAddress string                    `json:"location_address"`
-    CreatedAt       string                    `json:"created_at"`
-    Sum             float64                   `json:"sum"`
-    Products        []MarketAdminOrderProduct `json:"products"`
+	CartOrderID     int                       `json:"cart_order_id"`
+	Name            string                    `json:"name"`
+	Status          string                    `json:"status"`
+	LocationAddress string                    `json:"location_address"`
+	CreatedAt       string                    `json:"created_at"`
+	Sum             float64                   `json:"sum"`
+	Products        []MarketAdminOrderProduct `json:"products"`
 }
 
 // MarketAdminOrderProduct represents a product in an order for market admins
 type MarketAdminOrderProduct struct {
-    ID        int     `json:"id"`
-    Name      string  `json:"name"`
-    Price     float64 `json:"price"`
-    ImageURL  string  `json:"image_url"`
-    Discount  float64 `json:"discount"`
-    CreatedAt string  `json:"created_at"`
-    Size      string  `json:"size"`
-    SizePrice float64 `json:"size_price"`
-    Count     int64   `json:"count"`
-    Sum       float64 `json:"sum"`
+	ID        int     `json:"id"`
+	Name      string  `json:"name"`
+	Price     float64 `json:"price"`
+	ImageURL  string  `json:"image_url"`
+	Discount  float64 `json:"discount"`
+	CreatedAt string  `json:"created_at"`
+	Size      string  `json:"size"`
+	SizePrice float64 `json:"size_price"`
+	Count     int64   `json:"count"`
+	Sum       float64 `json:"sum"`
+}
+
+type CartRequest struct {
+	ProductID   int `json:"product_id"`
+	ThumbnailID int `json:"thumbnail_id"`
+	SizeID      int `json:"size_id"`
+	Count       int `json:"count"`
 }

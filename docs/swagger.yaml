@@ -1,14 +1,5 @@
 basePath: /
 definitions:
-  api.CartRequest:
-    properties:
-      market_id:
-        type: integer
-      products:
-        items:
-          $ref: '#/definitions/models.CartProductReq'
-        type: array
-    type: object
   api.FavoriteRequest:
     properties:
       product_id:
@@ -33,7 +24,7 @@ definitions:
     properties:
       password:
         type: string
-      username:
+      phone:
         type: string
     type: object
   api.OrderRequest:
@@ -53,9 +44,15 @@ definitions:
         type: integer
       description:
         type: string
+      description_ru:
+        type: string
       discount:
         type: number
+      is_active:
+        type: boolean
       name:
+        type: string
+      name_ru:
         type: string
       price:
         type: number
@@ -107,7 +104,7 @@ definitions:
     - code
     - phone
     type: object
-  models.CartProductReq:
+  models.CartRequest:
     properties:
       count:
         type: integer
@@ -152,15 +149,15 @@ paths:
     post:
       consumes:
       - application/json
-      description: Adds or updates multiple products in the user's cart for a market
-        under a single cart order. Requires user JWT authentication.
+      description: Adds or updates a product in the user's cart for a market under
+        a single cart order. Requires user JWT authentication.
       parameters:
       - description: Cart entry details
         in: body
         name: cart
         required: true
         schema:
-          $ref: '#/definitions/api.CartRequest'
+          $ref: '#/definitions/models.CartRequest'
       produces:
       - application/json
       responses: {}
@@ -363,16 +360,49 @@ paths:
   /api/market/products:
     post:
       consumes:
-      - application/json
-      description: Creates a new product for the market admin's market. Requires JWT
-        authentication.
+      - multipart/form-data
+      description: Creates a new product for the market admin's market with an optional
+        thumbnail. Requires JWT authentication.
       parameters:
-      - description: Product details
-        in: body
-        name: product
+      - description: Product name
+        in: formData
+        name: name
         required: true
-        schema:
-          $ref: '#/definitions/api.ProductRequest'
+        type: string
+      - description: Product name in Russian
+        in: formData
+        name: name_ru
+        type: string
+      - description: Product price
+        in: formData
+        name: price
+        required: true
+        type: number
+      - description: Product discount (0-100)
+        in: formData
+        name: discount
+        type: number
+      - description: Product description
+        in: formData
+        name: description
+        type: string
+      - description: Product description in Russian
+        in: formData
+        name: description_ru
+        type: string
+      - description: Category ID
+        in: formData
+        name: category_id
+        required: true
+        type: integer
+      - description: Is product active
+        in: formData
+        name: is_active
+        type: boolean
+      - description: Thumbnail image
+        in: formData
+        name: thumbnail
+        type: file
       produces:
       - application/json
       responses: {}
@@ -396,6 +426,11 @@ paths:
       - description: Comma-separated list of colors for thumbnails
         in: formData
         name: colors
+        required: true
+        type: string
+      - description: Comma-separated list of colors_ru for thumbnails
+        in: formData
+        name: colors_ru
         required: true
         type: string
       - description: Thumbnail images
@@ -524,6 +559,11 @@ paths:
         name: name
         required: true
         type: string
+      - description: Category name_ru
+        in: formData
+        name: name_ru
+        required: true
+        type: string
       - description: Thumbnail image
         in: formData
         name: thumbnail
@@ -566,14 +606,9 @@ paths:
         name: name
         required: true
         type: string
-      - description: Admin username
+      - description: Market name russian
         in: formData
-        name: username
-        required: true
-        type: string
-      - description: Admin full name
-        in: formData
-        name: full_name
+        name: name_ru
         required: true
         type: string
       - description: Admin phone

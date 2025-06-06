@@ -34,7 +34,6 @@ func NewHandler(db *services.DBService) *Handler {
 	return &Handler{db: db}
 }
 
-
 // SetupRoutes configures API routes
 func (h *Handler) SetupRoutes(router *mux.Router) {
 	// CORS setup
@@ -98,20 +97,22 @@ func (h *Handler) SetupRoutes(router *mux.Router) {
 	router.Use(c.Handler)
 }
 
-
 // ProductRequest for creating/updating a product
 type ProductRequest struct {
-    CategoryID  int    `json:"category_id"`
-    Name        string `json:"name"`
-    Price       float64 `json:"price"`
-    Discount    float64 `json:"discount,omitempty"`
-    Description string `json:"description,omitempty"`
+	CategoryID    int     `json:"category_id"`
+	Name          string  `json:"name"`
+	NameRu        string  `json:"name_ru"`
+	Price         float64 `json:"price"`
+	Discount      float64 `json:"discount,omitempty"`
+	Description   string  `json:"description,omitempty"`
+	DescriptionRu string  `json:"description_ru,omitempty"`
+	IsActive      bool    `json:"is_active"`
 }
 
 // SizeRequest for adding a size
 type SizeRequest struct {
-	Size  string `json:"size"`
-	Count int    `json:"count"`
+	Size  string  `json:"size"`
+	Count int     `json:"count"`
 	Price float64 `json:"price"`
 }
 
@@ -122,7 +123,7 @@ type FavoriteRequest struct {
 
 // MarketRequest for market login
 type MarketRequest struct {
-	Username string `json:"username"`
+	Phone    string `json:"phone"`
 	Password string `json:"password"`
 }
 
@@ -172,9 +173,6 @@ func (h *Handler) getMarkets(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, markets)
 }
 
-
-
-
 // createMarket creates a new market with admin account and optional thumbnail
 // @Summary Create a new market
 // @Description Creates a new market with an admin account and optional thumbnail image. Requires superadmin JWT authentication.
@@ -182,8 +180,7 @@ func (h *Handler) getMarkets(w http.ResponseWriter, r *http.Request) {
 // @Accept multipart/form-data
 // @Produce json
 // @Param name formData string true "Market name"
-// @Param username formData string true "Admin username"
-// @Param full_name formData string true "Admin full name"
+// @Param name_ru formData string true "Market name russian"
 // @Param phone formData string true "Admin phone"
 // @Param delivery_price formData float64 true "Delivery price"
 // @Param password formData string true "Admin password"
@@ -205,8 +202,7 @@ func (h *Handler) createMarket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	name := r.FormValue("name")
-	username := r.FormValue("username")
-	fullName := r.FormValue("full_name")
+	name_ru := r.FormValue("name_ru")
 	phone := r.FormValue("phone")
 	password := r.FormValue("password")
 	// Get the form value as a string
@@ -217,10 +213,10 @@ func (h *Handler) createMarket(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// Handle the error (e.g., invalid input)
 		respondError(w, http.StatusInternalServerError, "error converting string to float64")
-		return 
+		return
 	}
 
-	if name == "" || username == "" || fullName == "" || phone == "" || password == "" {
+	if name == "" || name_ru == "" || phone == "" || password == "" {
 		respondError(w, http.StatusBadRequest, "Missing required fields")
 		return
 	}
@@ -256,12 +252,13 @@ func (h *Handler) createMarket(w http.ResponseWriter, r *http.Request) {
 		}
 
 		thumbnailURL = filepath.Join("/uploads/markets", filename)
+		thumbnailURL = strings.ReplaceAll(thumbnailURL, string(filepath.Separator), "/")
 	} else if err != http.ErrMissingFile {
 		respondError(w, http.StatusBadRequest, "Error retrieving file")
 		return
 	}
 
-	createdUsername, marketID, err := h.db.CreateMarket(name, thumbnailURL, username, fullName, phone, password, deliveryPrice)
+	createdUsername, marketID, err := h.db.CreateMarket(name, name_ru, thumbnailURL, phone, password, deliveryPrice)
 	if err != nil {
 		if err.Error() == "username or phone already exists" {
 			respondError(w, http.StatusConflict, err.Error())
@@ -313,8 +310,6 @@ func (h *Handler) deleteMarket(w http.ResponseWriter, r *http.Request) {
 
 	respondJSON(w, http.StatusOK, map[string]string{"message": "Market, products, and thumbnails deleted successfully"})
 }
-
-
 
 // getMarketProducts retrieves products for the market admin
 // @Summary Get market products
@@ -451,7 +446,6 @@ func (h *Handler) getProduct(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, product)
 }
 
-
 // registerUser registers a user
 // @Summary Register user
 // @Description Registers a user and sends OTP.
@@ -563,54 +557,138 @@ func (h *Handler) generateJWT(userID, marketID int, role string) (string, error)
 }
 
 // ProductRequest represents the JSON request body for creating a product
-// type ProductRequest struct {
-// 	MarketID    string  `json:"market_id"`
-// 	Name        string  `json:"name"`
-// 	Price       string  `json:"price"`
-// 	Discount    string  `json:"discount,omitempty"`
-// 	Description string  `json:"description,omitempty"`
-// }
-
+//
+//	type ProductRequest struct {
+//		MarketID    string  `json:"market_id"`
+//		Name        string  `json:"name"`
+//		Price       string  `json:"price"`
+//		Discount    string  `json:"discount,omitempty"`
+//		Description string  `json:"description,omitempty"`
+//	}
+//
 // createProduct creates a new product
 // @Summary Create a new product
-// @Description Creates a new product for the market admin's market. Requires JWT authentication.
+// @Description Creates a new product for the market admin's market with an optional thumbnail. Requires JWT authentication.
 // @Tags Products
-// @Accept json
+// @Accept multipart/form-data
 // @Produce json
 // @Security BearerAuth
-// @Param product body ProductRequest true "Product details"
+// @Param name formData string true "Product name"
+// @Param name_ru formData string false "Product name in Russian"
+// @Param price formData number true "Product price"
+// @Param discount formData number false "Product discount (0-100)"
+// @Param description formData string false "Product description"
+// @Param description_ru formData string false "Product description in Russian"
+// @Param category_id formData int true "Category ID"
+// @Param is_active formData boolean false "Is product active"
+// @Param thumbnail formData file false "Thumbnail image"
 // @Router /api/market/products [post]
 func (h *Handler) createProduct(w http.ResponseWriter, r *http.Request) {
-    claims, ok := r.Context().Value("claims").(*models.Claims)
-    if !ok || claims.MarketID == 0 || claims.Role != "market_admin" {
-        respondError(w, http.StatusUnauthorized, "Unauthorized")
-        return
-    }
+	claims, ok := r.Context().Value("claims").(*models.Claims)
+	if !ok || claims.MarketID == 0 || claims.Role != "market_admin" {
+		respondError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
 
-    var req ProductRequest
-    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-        respondError(w, http.StatusBadRequest, "Error parsing JSON body")
-        return
-    }
+	// Parse multipart form (max 10MB)
+	if err := r.ParseMultipartForm(10 << 20); err != nil {
+		respondError(w, http.StatusBadRequest, "Error parsing form data")
+		return
+	}
 
-    if req.Name == "" || req.Price == 0 || req.CategoryID == 0 {
-        respondError(w, http.StatusBadRequest, "Missing required fields")
-        return
-    }
+	// Get form fields
+	req := ProductRequest{
+		Name:          r.FormValue("name"),
+		NameRu:        r.FormValue("name_ru"),
+		Description:   r.FormValue("description"),
+		DescriptionRu: r.FormValue("description_ru"),
+	}
+	price, err := strconv.ParseFloat(r.FormValue("price"), 64)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid price")
+		return
+	}
+	req.Price = price
 
-    productID, err := h.db.CreateProduct(claims.MarketID, req.CategoryID, req.Name, req.Price, req.Discount, req.Description)
-    if err != nil {
-        if err.Error() == "market not found" || err.Error() == "category not found" {
-            respondError(w, http.StatusBadRequest, err.Error())
-            return
-        }
-        respondError(w, http.StatusInternalServerError, err.Error())
-        return
-    }
+	discount, err := strconv.ParseFloat(r.FormValue("discount"), 64)
+	if err != nil && r.FormValue("discount") != "" {
+		respondError(w, http.StatusBadRequest, "Invalid discount")
+		return
+	}
+	req.Discount = discount
 
-    respondJSON(w, http.StatusOK, map[string]int{"product_id": productID})
+	categoryID, err := strconv.Atoi(r.FormValue("category_id"))
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid category ID")
+		return
+	}
+	req.CategoryID = categoryID
+
+	isActive, err := strconv.ParseBool(r.FormValue("is_active"))
+	if err != nil && r.FormValue("is_active") != "" {
+		respondError(w, http.StatusBadRequest, "Invalid is_active value")
+		return
+	}
+	req.IsActive = isActive
+
+	// Validate required fields
+	if req.Name == "" || req.Price == 0 || req.CategoryID == 0 {
+		respondError(w, http.StatusBadRequest, "Missing required fields")
+		return
+	}
+
+	var urlPath string
+	var filePath string
+	var filename string
+	file, fileHeader, err := r.FormFile("thumbnail")
+	if err == nil {
+		defer file.Close()
+
+		// Validate file type
+		mimeType := fileHeader.Header.Get("Content-Type")
+		if mimeType != "image/jpeg" && mimeType != "image/png" {
+			respondError(w, http.StatusBadRequest, "Only JPEG or PNG images are allowed")
+			return
+		}
+
+		// Generate unique filename
+		timestamp := time.Now().UnixNano()
+		filename = fmt.Sprintf("%d-%s", timestamp, strings.ReplaceAll(fileHeader.Filename, " ", "_"))
+		filePath = filepath.Join("uploads", "products", "main", filename)
+		urlPath = fmt.Sprintf("/uploads/products/main/%s", filename)
+
+		// Create directories if they don't exist
+		if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
+			respondError(w, http.StatusInternalServerError, "Failed to create upload directory")
+			return
+		}
+
+		// Save file
+		dst, err := os.Create(filePath)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "Failed to save thumbnail")
+			return
+		}
+		defer dst.Close()
+		if _, err := io.Copy(dst, file); err != nil {
+			respondError(w, http.StatusInternalServerError, "Failed to save thumbnail")
+			return
+		}
+	} else if err != http.ErrMissingFile {
+		respondError(w, http.StatusBadRequest, "Error accessing thumbnail")
+		return
+	}
+
+	// Create product
+	productID, err := h.db.CreateProduct(claims.MarketID, req.CategoryID, req.Name, req.NameRu, req.Price, req.Discount, req.Description, req.DescriptionRu, req.IsActive, urlPath, filePath, filename)
+
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]int{"product_id": productID})
 }
-
 
 // deleteSizeByID deletes a size
 // @Summary Delete a size by ID
@@ -646,7 +724,6 @@ func (h *Handler) deleteSizeByID(w http.ResponseWriter, r *http.Request) {
 
 	respondJSON(w, http.StatusOK, map[string]string{"message": "Size deleted successfully"})
 }
-
 
 // uploadMarketThumbnail uploads a thumbnail for a market
 // @Summary Upload market thumbnail
@@ -704,7 +781,6 @@ func (h *Handler) uploadMarketThumbnail(w http.ResponseWriter, r *http.Request) 
 
 	respondJSON(w, http.StatusOK, map[string]string{"message": "Thumbnail uploaded successfully"})
 }
-
 
 // updateProduct updates a product
 // @Summary Update a product
@@ -766,6 +842,7 @@ func (h *Handler) updateProduct(w http.ResponseWriter, r *http.Request) {
 // @Security BearerAuth
 // @Param id path string true "Product ID"
 // @Param colors formData string true "Comma-separated list of colors for thumbnails"
+// @Param colors_ru formData string true "Comma-separated list of colors_ru for thumbnails"
 // @Param thumbnails formData file true "Thumbnail images"
 // @Router /api/market/products/{id}/thumbnails [post]
 func (h *Handler) addProductThumbnails(w http.ResponseWriter, r *http.Request) {
@@ -779,11 +856,17 @@ func (h *Handler) addProductThumbnails(w http.ResponseWriter, r *http.Request) {
 	}
 
 	colors := r.FormValue("colors")
+	colors_ru := r.FormValue("colors_ru")
 	if colors == "" {
 		respondError(w, http.StatusBadRequest, "Colors are required")
 		return
 	}
+	if colors_ru == "" {
+		respondError(w, http.StatusBadRequest, "Colors_ru are required")
+		return
+	}
 	colorList := strings.Split(colors, ",")
+	colorList_ru := strings.Split(colors_ru, ",")
 	files := r.MultipartForm.File["thumbnails"]
 	if len(files) == 0 {
 		respondError(w, http.StatusBadRequest, "At least one thumbnail is required")
@@ -791,6 +874,10 @@ func (h *Handler) addProductThumbnails(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(files) != len(colorList) {
 		respondError(w, http.StatusBadRequest, "Number of thumbnails must match number of colors")
+		return
+	}
+	if len(files) != len(colorList_ru) {
+		respondError(w, http.StatusBadRequest, "Number of thumbnails must match number of colors_ru")
 		return
 	}
 
@@ -830,11 +917,14 @@ func (h *Handler) addProductThumbnails(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusBadRequest, "Invalid product ID")
 			return
 		}
+		ImageURL := filepath.Join("/uploads/products/"+id, filename)
+		ImageURL = strings.ReplaceAll(ImageURL, string(filepath.Separator), "/")
 
 		thumbnails = append(thumbnails, services.ThumbnailData{
 			ProductID: productID,
 			Color:     colorList[i],
-			ImageURL:  "/uploads/products/"+id + "/" + filename,
+			ColorRu:   colorList_ru[i],
+			ImageURL:  ImageURL,
 		})
 	}
 
@@ -847,7 +937,6 @@ func (h *Handler) addProductThumbnails(w http.ResponseWriter, r *http.Request) {
 
 	respondJSON(w, http.StatusOK, map[string]string{"message": "Thumbnails added successfully"})
 }
-
 
 // deleteThumbnail deletes a thumbnail
 // @Summary Delete a thumbnail
@@ -884,7 +973,6 @@ func (h *Handler) deleteThumbnail(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]string{"message": "Thumbnail deleted successfully"})
 }
 
-
 // getAllThumbnails retrieves all thumbnails with product information
 // @Summary Get all thumbnails with product details
 // @Description Retrieves a list of all thumbnails with associated product information. Requires JWT authentication.
@@ -902,13 +990,11 @@ func (h *Handler) getAllThumbnails(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, thumbnails)
 }
 
-
 // // SizeRequest represents the JSON request body for adding a size
 // type SizeRequest struct {
 // 	Size  string `json:"size"`
 // 	Count int    `json:"count"`
 // }
-
 
 // getUserFavorites returns favorite products
 // @Summary Get user's favorite products
@@ -947,8 +1033,6 @@ func (h *Handler) getUserFavorites(w http.ResponseWriter, r *http.Request) {
 
 	respondJSON(w, http.StatusOK, products)
 }
-
-
 
 // toggleFavorite toggles a favorite product
 // @Summary Toggle favorite product
@@ -990,7 +1074,6 @@ func (h *Handler) toggleFavorite(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]bool{"is_favorite": isFavorite})
 }
 
-
 // loginMarket authenticates a market admin
 // @Summary Login market admin
 // @Description Authenticates a market admin and returns a JWT token.
@@ -1006,12 +1089,12 @@ func (h *Handler) loginMarket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Username == "" || req.Password == "" {
+	if req.Phone == "" || req.Password == "" {
 		respondError(w, http.StatusBadRequest, "Missing credentials")
 		return
 	}
 
-	userID, marketID, err := h.db.AuthenticateMarket(req.Username, req.Password)
+	userID, marketID, err := h.db.AuthenticateMarket(req.Phone, req.Password)
 	if err != nil {
 		respondError(w, http.StatusUnauthorized, err.Error())
 		return
@@ -1159,7 +1242,6 @@ func respondError(w http.ResponseWriter, status int, message string) {
 	respondJSON(w, status, map[string]string{"error": message})
 }
 
-
 // registerSuperadmin registers a new superadmin
 // @Summary Register a new superadmin
 // @Description Registers a new superadmin with username, full name, phone, and password.
@@ -1193,7 +1275,6 @@ func (h *Handler) registerSuperadmin(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]int{"superadmin_id": superadminID})
 }
 
-
 // createCategory creates a new category with optional thumbnail
 // @Summary Create a new category
 // @Description Creates a category with name and optional thumbnail image. Requires superadmin JWT authentication.
@@ -1202,76 +1283,78 @@ func (h *Handler) registerSuperadmin(w http.ResponseWriter, r *http.Request) {
 // @Produce json
 // @Security BearerAuth
 // @Param name formData string true "Category name"
+// @Param name_ru formData string true "Category name_ru"
 // @Param thumbnail formData file false "Thumbnail image"
 // @Router /api/superadmin/categories [post]
 func (h *Handler) createCategory(w http.ResponseWriter, r *http.Request) {
-    claims, ok := r.Context().Value("claims").(*models.Claims)
-    if !ok || claims.Role != "superadmin" {
-        respondError(w, http.StatusUnauthorized, "Unauthorized")
-        return
-    }
+	claims, ok := r.Context().Value("claims").(*models.Claims)
+	if !ok || claims.Role != "superadmin" {
+		respondError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
 
-    err := r.ParseMultipartForm(10 << 20) // Max 10 MB
-    if err != nil {
-        respondError(w, http.StatusBadRequest, "Error parsing form")
-        return
-    }
+	err := r.ParseMultipartForm(10 << 20) // Max 10 MB
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Error parsing form")
+		return
+	}
 
-    name := r.FormValue("name")
-    if name == "" {
-        respondError(w, http.StatusBadRequest, "Category name is required")
-        return
-    }
+	name := r.FormValue("name")
+	name_ru := r.FormValue("name_ru")
+	if name == "" {
+		respondError(w, http.StatusBadRequest, "Category name is required")
+		return
+	}
 
-    var thumbnailURL string
-    file, handler, err := r.FormFile("thumbnail")
-    if err == nil {
-        defer file.Close()
+	var thumbnailURL string
+	file, handler, err := r.FormFile("thumbnail")
+	if err == nil {
+		defer file.Close()
 
-        uploadDir := os.Getenv("UPLOAD_DIR")
-        if uploadDir == "" {
-            uploadDir = "./Uploads"
-        }
-        categoriesDir := filepath.Join(uploadDir, "categories")
-        if err := os.MkdirAll(categoriesDir, 0755); err != nil {
-            respondError(w, http.StatusInternalServerError, "Error creating uploads directory")
-            return
-        }
+		uploadDir := os.Getenv("UPLOAD_DIR")
+		if uploadDir == "" {
+			uploadDir = "./Uploads"
+		}
+		categoriesDir := filepath.Join(uploadDir, "categories")
+		if err := os.MkdirAll(categoriesDir, 0755); err != nil {
+			respondError(w, http.StatusInternalServerError, "Error creating uploads directory")
+			return
+		}
 
-        filename := fmt.Sprintf("%d-%s", time.Now().UnixNano(), handler.Filename)
-        filePath := filepath.Join(categoriesDir, filename)
-        out, err := os.Create(filePath)
-        if err != nil {
-            respondError(w, http.StatusInternalServerError, "Error saving file")
-            return
-        }
-        defer out.Close()
+		filename := fmt.Sprintf("%d-%s", time.Now().UnixNano(), handler.Filename)
+		filePath := filepath.Join(categoriesDir, filename)
+		out, err := os.Create(filePath)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "Error saving file")
+			return
+		}
+		defer out.Close()
 
-        _, err = io.Copy(out, file)
-        if err != nil {
-            respondError(w, http.StatusInternalServerError, "Error copying file")
-            return
-        }
+		_, err = io.Copy(out, file)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "Error copying file")
+			return
+		}
 
-        thumbnailURL = filepath.Join("/uploads/categories", filename)
-    } else if err != http.ErrMissingFile {
-        respondError(w, http.StatusBadRequest, "Error retrieving file")
-        return
-    }
+		thumbnailURL = filepath.Join("/uploads/categories", filename)
+		thumbnailURL = strings.ReplaceAll(thumbnailURL, string(filepath.Separator), "/")
+	} else if err != http.ErrMissingFile {
+		respondError(w, http.StatusBadRequest, "Error retrieving file")
+		return
+	}
 
-    categoryID, err := h.db.CreateCategory(name, thumbnailURL)
-    if err != nil {
-        if strings.Contains(err.Error(), "Duplicate entry") {
-            respondError(w, http.StatusConflict, "Category name already exists")
-            return
-        }
-        respondError(w, http.StatusInternalServerError, err.Error())
-        return
-    }
+	categoryID, err := h.db.CreateCategory(name, name_ru, thumbnailURL)
+	if err != nil {
+		if strings.Contains(err.Error(), "Duplicate entry") {
+			respondError(w, http.StatusConflict, "Category name already exists")
+			return
+		}
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 
-    respondJSON(w, http.StatusOK, map[string]int{"category_id": categoryID})
+	respondJSON(w, http.StatusOK, map[string]int{"category_id": categoryID})
 }
-
 
 // deleteCategory deletes a category and its thumbnail
 // @Summary Delete a category
@@ -1282,37 +1365,36 @@ func (h *Handler) createCategory(w http.ResponseWriter, r *http.Request) {
 // @Param category_id path string true "Category ID"
 // @Router /api/superadmin/categories/{category_id} [delete]
 func (h *Handler) deleteCategory(w http.ResponseWriter, r *http.Request) {
-    claims, ok := r.Context().Value("claims").(*models.Claims)
-    if !ok || claims.Role != "superadmin" {
-        respondError(w, http.StatusUnauthorized, "Unauthorized")
-        return
-    }
+	claims, ok := r.Context().Value("claims").(*models.Claims)
+	if !ok || claims.Role != "superadmin" {
+		respondError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
 
-    vars := mux.Vars(r)
-    categoryIDStr := vars["category_id"]
-    categoryID, err := strconv.Atoi(categoryIDStr)
-    if err != nil {
-        respondError(w, http.StatusBadRequest, "Invalid category ID")
-        return
-    }
+	vars := mux.Vars(r)
+	categoryIDStr := vars["category_id"]
+	categoryID, err := strconv.Atoi(categoryIDStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid category ID")
+		return
+	}
 
-    err = h.db.DeleteCategory(categoryID)
-    if err != nil {
-        if err.Error() == "category not found" {
-            respondError(w, http.StatusNotFound, err.Error())
-            return
-        }
-        if strings.Contains(err.Error(), "FOREIGN KEY") {
-            respondError(w, http.StatusConflict, "Category has associated products")
-            return
-        }
-        respondError(w, http.StatusInternalServerError, err.Error())
-        return
-    }
+	err = h.db.DeleteCategory(categoryID)
+	if err != nil {
+		if err.Error() == "category not found" {
+			respondError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		if strings.Contains(err.Error(), "FOREIGN KEY") {
+			respondError(w, http.StatusConflict, "Category has associated products")
+			return
+		}
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 
-    respondJSON(w, http.StatusOK, map[string]string{"message": "Category and thumbnail deleted successfully"})
+	respondJSON(w, http.StatusOK, map[string]string{"message": "Category and thumbnail deleted successfully"})
 }
-
 
 // getCategories retrieves paginated categories with search
 // @Summary Get categories
@@ -1353,7 +1435,6 @@ func (h *Handler) getCategories(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, categories)
 }
 
-
 // // CartRequest for adding a product to the cart
 // type CartRequest struct {
 //     MarketID    int `json:"market_id"`
@@ -1365,59 +1446,49 @@ func (h *Handler) getCategories(w http.ResponseWriter, r *http.Request) {
 
 // CartRequest for adding products to the cart
 type CartRequest struct {
-    MarketID int              `json:"market_id"`
-    Products []models.CartProductReq `json:"products"`
+	MarketID int                     `json:"market_id"`
+	Products []models.CartProductReq `json:"products"`
 }
 
-
-
-// addToCart adds products to the user's cart
+// addToCart adds a product to the user's cart
 // @Summary Add to cart
-// @Description Adds or updates multiple products in the user's cart for a market under a single cart order. Requires user JWT authentication.
+// @Description Adds or updates a product in the user's cart for a market under a single cart order. Requires user JWT authentication.
 // @Tags Cart
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param cart body CartRequest true "Cart entry details"
+// @Param cart body models.CartRequest true "Cart entry details"
 // @Router /api/cart [post]
 func (h *Handler) addToCart(w http.ResponseWriter, r *http.Request) {
-    claims, ok := r.Context().Value("claims").(*models.Claims)
-    if !ok || claims.UserID == 0 || claims.Role != "user" {
-        respondError(w, http.StatusUnauthorized, "Unauthorized")
-        return
-    }
+	claims, ok := r.Context().Value("claims").(*models.Claims)
+	if !ok || claims.UserID == 0 || claims.Role != "user" {
+		respondError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
 
-    var req CartRequest
-    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-        respondError(w, http.StatusBadRequest, "Error parsing JSON body")
-        return
-    }
+	var req models.CartRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "Error parsing JSON body")
+		return
+	}
 
-    if req.MarketID <= 0 || len(req.Products) == 0 {
-        respondError(w, http.StatusBadRequest, "Invalid or missing market_id or products")
-        return
-    }
+	if req.ProductID <= 0 || req.ThumbnailID <= 0 || req.SizeID <= 0 || req.Count <= 0 {
+		respondError(w, http.StatusBadRequest, "Invalid or missing product_id, thumbnail_id, size_id, or count")
+		return
+	}
 
-    for _, prod := range req.Products {
-        if prod.ProductID <= 0 || prod.ThumbnailID <= 0 || prod.SizeID <= 0 || prod.Count <= 0 {
-            respondError(w, http.StatusBadRequest, fmt.Sprintf("Invalid fields for product_id %d", prod.ProductID))
-            return
-        }
-    }
+	cartOrderID, err := h.db.AddToCart(claims.UserID, req)
+	if err != nil {
+		if strings.Contains(err.Error(), "invalid") {
+			respondError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 
-    cartOrderID, err := h.db.AddToCart(claims.UserID, req.MarketID, req.Products)
-    if err != nil {
-        if strings.Contains(err.Error(), "invalid market") {
-            respondError(w, http.StatusBadRequest, err.Error())
-            return
-        }
-        respondError(w, http.StatusInternalServerError, err.Error())
-        return
-    }
-
-    respondJSON(w, http.StatusOK, map[string]int{"cart_order_id": cartOrderID})
+	respondJSON(w, http.StatusOK, map[string]int{"cart_order_id": cartOrderID})
 }
-
 
 // getCart retrieves the user's cart
 // @Summary Get user cart
@@ -1441,7 +1512,6 @@ func (h *Handler) getCart(w http.ResponseWriter, r *http.Request) {
 
 	respondJSON(w, http.StatusOK, cart)
 }
-
 
 // deleteCart deletes a user's cart order
 // @Summary Delete cart
@@ -1481,16 +1551,16 @@ func (h *Handler) deleteCart(w http.ResponseWriter, r *http.Request) {
 
 // LocationRequest for adding a new location
 type LocationRequest struct {
-    LocationName    string `json:"location_name"`
-    LocationAddress string `json:"location_address"`
+	LocationName    string `json:"location_name"`
+	LocationAddress string `json:"location_address"`
 }
 
 // OrderRequest for submitting an order
 type OrderRequest struct {
-    LocationID int    `json:"location_id"`
-    Name       string `json:"name"`
-    Phone      string `json:"phone"`
-    Notes      string `json:"notes"`
+	LocationID int    `json:"location_id"`
+	Name       string `json:"name"`
+	Phone      string `json:"phone"`
+	Notes      string `json:"notes"`
 }
 
 // addLocation adds a new location for the user
@@ -1503,36 +1573,35 @@ type OrderRequest struct {
 // @Param location body LocationRequest true "Location details"
 // @Router /api/locations [post]
 func (h *Handler) addLocation(w http.ResponseWriter, r *http.Request) {
-    claims, ok := r.Context().Value("claims").(*models.Claims)
-    if !ok || claims.UserID == 0 || claims.Role != "user" {
-        respondError(w, http.StatusUnauthorized, "Unauthorized")
-        return
-    }
+	claims, ok := r.Context().Value("claims").(*models.Claims)
+	if !ok || claims.UserID == 0 || claims.Role != "user" {
+		respondError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
 
-    var req LocationRequest
-    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-        respondError(w, http.StatusBadRequest, "Error parsing JSON body")
-        return
-    }
+	var req LocationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "Error parsing JSON body")
+		return
+	}
 
-    if req.LocationName == "" || req.LocationAddress == "" {
-        respondError(w, http.StatusBadRequest, "Location name and address are required")
-        return
-    }
+	if req.LocationName == "" || req.LocationAddress == "" {
+		respondError(w, http.StatusBadRequest, "Location name and address are required")
+		return
+	}
 
-    locationID, err := h.db.CreateLocation(claims.UserID, req.LocationName, req.LocationAddress)
-    if err != nil {
-        if err.Error() == "location name already exists for user" {
-            respondError(w, http.StatusConflict, err.Error())
-            return
-        }
-        respondError(w, http.StatusInternalServerError, err.Error())
-        return
-    }
+	locationID, err := h.db.CreateLocation(claims.UserID, req.LocationName, req.LocationAddress)
+	if err != nil {
+		if err.Error() == "location name already exists for user" {
+			respondError(w, http.StatusConflict, err.Error())
+			return
+		}
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 
-    respondJSON(w, http.StatusOK, map[string]int{"location_id": locationID})
+	respondJSON(w, http.StatusOK, map[string]int{"location_id": locationID})
 }
-
 
 // getLocations retrieves the user's locations
 // @Summary Get user locations
@@ -1542,21 +1611,20 @@ func (h *Handler) addLocation(w http.ResponseWriter, r *http.Request) {
 // @Security BearerAuth
 // @Router /api/locations [get]
 func (h *Handler) getLocations(w http.ResponseWriter, r *http.Request) {
-    claims, ok := r.Context().Value("claims").(*models.Claims)
-    if !ok || claims.UserID == 0 || claims.Role != "user" {
-        respondError(w, http.StatusUnauthorized, "Unauthorized")
-        return
-    }
+	claims, ok := r.Context().Value("claims").(*models.Claims)
+	if !ok || claims.UserID == 0 || claims.Role != "user" {
+		respondError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
 
-    locations, err := h.db.GetUserLocations(claims.UserID)
-    if err != nil {
-        respondError(w, http.StatusInternalServerError, err.Error())
-        return
-    }
+	locations, err := h.db.GetUserLocations(claims.UserID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 
-    respondJSON(w, http.StatusOK, locations)
+	respondJSON(w, http.StatusOK, locations)
 }
-
 
 // createOrder submits an order for a cart
 // @Summary Create order
@@ -1569,46 +1637,46 @@ func (h *Handler) getLocations(w http.ResponseWriter, r *http.Request) {
 // @Param order body OrderRequest true "Order details"
 // @Router /api/cart/{cart_order_id}/order [post]
 func (h *Handler) createOrder(w http.ResponseWriter, r *http.Request) {
-    claims, ok := r.Context().Value("claims").(*models.Claims)
-    if !ok || claims.UserID == 0 || claims.Role != "user" {
-        respondError(w, http.StatusUnauthorized, "Unauthorized")
-        return
-    }
+	claims, ok := r.Context().Value("claims").(*models.Claims)
+	if !ok || claims.UserID == 0 || claims.Role != "user" {
+		respondError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
 
-    vars := mux.Vars(r)
-    cartOrderIDStr := vars["cart_order_id"]
-    cartOrderID, err := strconv.Atoi(cartOrderIDStr)
-    if err != nil {
-        respondError(w, http.StatusBadRequest, "Invalid cart order ID")
-        return
-    }
+	vars := mux.Vars(r)
+	cartOrderIDStr := vars["cart_order_id"]
+	cartOrderID, err := strconv.Atoi(cartOrderIDStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid cart order ID")
+		return
+	}
 
-    var req OrderRequest
-    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-        respondError(w, http.StatusBadRequest, "Error parsing JSON body")
-        return
-    }
+	var req OrderRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "Error parsing JSON body")
+		return
+	}
 
-    if req.LocationID <= 0 || req.Name == "" || req.Phone == "" {
-        respondError(w, http.StatusBadRequest, "Missing required fields")
-        return
-    }
+	if req.LocationID <= 0 || req.Name == "" || req.Phone == "" {
+		respondError(w, http.StatusBadRequest, "Missing required fields")
+		return
+	}
 
-    orderID, err := h.db.CreateOrder(claims.UserID, cartOrderID, req.LocationID, req.Name, req.Phone, req.Notes)
-    if err != nil {
-        if err.Error() == "cart not found or not owned by user" || err.Error() == "location not found or not owned by user" {
-            respondError(w, http.StatusNotFound, err.Error())
-            return
-        }
-        if err.Error() == "order already exists for this cart" {
-            respondError(w, http.StatusConflict, err.Error())
-            return
-        }
-        respondError(w, http.StatusInternalServerError, err.Error())
-        return
-    }
+	orderID, err := h.db.CreateOrder(claims.UserID, cartOrderID, req.LocationID, req.Name, req.Phone, req.Notes)
+	if err != nil {
+		if err.Error() == "cart not found or not owned by user" || err.Error() == "location not found or not owned by user" {
+			respondError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		if err.Error() == "order already exists for this cart" {
+			respondError(w, http.StatusConflict, err.Error())
+			return
+		}
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 
-    respondJSON(w, http.StatusOK, map[string]int{"order_id": orderID})
+	respondJSON(w, http.StatusOK, map[string]int{"order_id": orderID})
 }
 
 // getMarketAdminOrders retrieves orders for a market admin's market
@@ -1649,8 +1717,6 @@ func (h *Handler) getMarketAdminOrders(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, orders)
 }
 
-
-
 // getMarketAdminOrderByID retrieves a specific order by cart_order_id for a market admin
 // @Summary Get market admin order by ID
 // @Description Retrieves detailed order information for a specific cart_order_id. Requires market admin JWT authentication.
@@ -1686,7 +1752,6 @@ func (h *Handler) getMarketAdminOrderByID(w http.ResponseWriter, r *http.Request
 
 	respondJSON(w, http.StatusOK, order)
 }
-
 
 // deleteLocation deletes a user's location
 // @Summary Delete location
