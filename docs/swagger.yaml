@@ -126,6 +126,11 @@ definitions:
       username:
         type: string
     type: object
+  models.UpdateCartRequest:
+    properties:
+      count_change:
+        type: integer
+    type: object
 host: 192.168.55.42:8080
 info:
   contact: {}
@@ -135,6 +140,17 @@ info:
   version: "1.0"
 paths:
   /api/cart:
+    delete:
+      description: Deletes all cart entries for the authenticated user. Requires user
+        JWT authentication.
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Clear cart
+      tags:
+      - Cart
     get:
       description: Retrieves the user's cart grouped by cart order and markets. Requires
         user JWT authentication.
@@ -210,6 +226,49 @@ paths:
       summary: Create order
       tags:
       - Orders
+  /api/cart/{size_id}:
+    delete:
+      description: Deletes a specific cart entry for the authenticated user based
+        on size_id. Requires user JWT authentication.
+      parameters:
+      - description: Size ID
+        in: path
+        name: size_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Delete cart entry by size_id
+      tags:
+      - Cart
+    put:
+      consumes:
+      - application/json
+      description: Updates the count of a specific cart entry for the authenticated
+        user based on size_id. Requires user JWT authentication.
+      parameters:
+      - description: Size ID
+        in: path
+        name: size_id
+        required: true
+        type: integer
+      - description: Count change
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateCartRequest'
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Update cart entry count
+      tags:
+      - Cart
   /api/favorites:
     get:
       description: Retrieves a paginated list of favorite products. Requires JWT authentication.

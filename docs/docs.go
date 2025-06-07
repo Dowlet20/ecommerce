@@ -61,6 +61,22 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {}
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Deletes all cart entries for the authenticated user. Requires user JWT authentication.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Cart"
+                ],
+                "summary": "Clear cart",
+                "responses": {}
             }
         },
         "/api/cart/{cart_order_id}": {
@@ -124,6 +140,70 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/api.OrderRequest"
                         }
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/api/cart/{size_id}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Updates the count of a specific cart entry for the authenticated user based on size_id. Requires user JWT authentication.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Cart"
+                ],
+                "summary": "Update cart entry count",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Size ID",
+                        "name": "size_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Count change",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateCartRequest"
+                        }
+                    }
+                ],
+                "responses": {}
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Deletes a specific cart entry for the authenticated user based on size_id. Requires user JWT authentication.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Cart"
+                ],
+                "summary": "Delete cart entry by size_id",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Size ID",
+                        "name": "size_id",
+                        "in": "path",
+                        "required": true
                     }
                 ],
                 "responses": {}
@@ -1336,6 +1416,14 @@ const docTemplate = `{
                 },
                 "username": {
                     "type": "string"
+                }
+            }
+        },
+        "models.UpdateCartRequest": {
+            "type": "object",
+            "properties": {
+                "count_change": {
+                    "type": "integer"
                 }
             }
         }

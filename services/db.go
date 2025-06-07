@@ -238,7 +238,7 @@ func (s *DBService) UpdateProduct(marketID, productID int, name string, price fl
 }
 
 // GetPaginatedProducts retrieves products with pagination, optional category, and name search
-func (s *DBService) GetPaginatedProducts(categoryID, page, limit int, search string) ([]models.Product, error) {
+func (s *DBService) GetPaginatedProducts(categoryID, duration, page, limit int, search string) ([]models.Product, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -248,17 +248,37 @@ func (s *DBService) GetPaginatedProducts(categoryID, page, limit int, search str
 	offset := (page - 1) * limit
 
 	query := `
-		SELECT p.id, p.market_id, m.name as market_name, m.name_ru as market_name_ru, p.category_id, p.name, p.name_ru, p.price, 
-			p.discount, p.description, p.description_ru, p.created_at, 
+		SELECT 
+			p.id, 
+			p.market_id, 
+			m.name as market_name, 
+			m.name_ru as market_name_ru, 
+			p.category_id, 
+			p.name, 
+			p.name_ru, 
+			p.price, 
+			p.discount, 
+			p.description, 
+			p.description_ru, 
+			p.created_at, 
 			IF(f.user_id IS NOT NULL, true, false) as is_favorite,
-			COALESCE(t.thumbnail_url, '') as thumbnail_url
+			COALESCE(t.thumbnail_url, '') as thumbnail_url,
+			CASE 
+				WHEN DATEDIFF(CURDATE(), p.created_at) <= ? THEN true 
+				ELSE false 
+			END as isNew,
+			CASE 
+				WHEN p.discount IS NOT NULL AND p.discount > 0 
+				THEN p.price - (p.price * p.discount / 100) 
+				ELSE p.price 
+			END as final_price
 		FROM products p 
 		LEFT JOIN markets m ON p.market_id = m.id 
 		LEFT JOIN favorites f ON p.id = f.product_id 
 		LEFT JOIN thumbnails t ON p.thumbnail_id = t.id 
 		WHERE p.is_active = true`
 
-	args := []interface{}{}
+	args := []interface{}{duration}
 
 	if categoryID != 0 {
 		query += " AND p.category_id = ?"
@@ -283,7 +303,7 @@ func (s *DBService) GetPaginatedProducts(categoryID, page, limit int, search str
 	for rows.Next() {
 		var p models.Product
 		if err := rows.Scan(&p.ID, &p.MarketID, &p.MarketName, &p.MarketNameRu, &p.CategoryID, &p.Name, &p.NameRu, &p.Price, &p.Discount,
-			&p.Description, &p.DescriptionRu, &p.CreatedAt, &p.IsFavorite, &p.ThumbnailURL); err != nil {
+			&p.Description, &p.DescriptionRu, &p.CreatedAt, &p.IsFavorite, &p.ThumbnailURL, &p.IsNew, &p.FinalPrice); err != nil {
 			return nil, fmt.Errorf("failed to scan product: %v", err)
 		}
 		p.Thumbnails, err = s.getProductDetails(p.ID)
@@ -1615,3 +1635,164 @@ func (s *DBService) DeleteLocation(userID, locationID int) error {
 
 	return nil
 }
+
+// ClearCart deletes all cart entries for a user
+func (s *DBService) ClearCart(userID int) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to start transaction: %v", err)
+	}
+	defer tx.Rollback()
+
+	// Delete all cart entries for the user
+	_, err = tx.Exec("DELETE FROM carts WHERE user_id = ?", userID)
+	if err != nil {
+		return fmt.Errorf("failed to clear cart: %v", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %v", err)
+	}
+
+	return nil
+}
+
+// DeleteCartBySizeID deletes a cart entry for a user based on size_id
+func (s *DBService) DeleteCartBySizeID(userID, sizeID int) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to start transaction: %v", err)
+	}
+	defer tx.Rollback()
+
+	// Delete cart entry
+	result, err := tx.Exec("DELETE FROM carts WHERE user_id = ? AND size_id = ?", userID, sizeID)
+	if err != nil {
+		return fmt.Errorf("failed to delete cart entry: %v", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check rows affected: %v", err)
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("cart entry not found")
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %v", err)
+	}
+
+	return nil
+}
+
+
+// UpdateCartCountBySizeID updates the count of a cart entry for a user based on size_id
+func (s *DBService) UpdateCartCountBySizeID(userID, sizeID, countChange int) (int, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("failed to start transaction: %v", err)
+	}
+	defer tx.Rollback()
+
+	// Fetch current count
+	var currentCount int
+	err = tx.QueryRow("SELECT count FROM carts WHERE user_id = ? AND size_id = ?", userID, sizeID).Scan(&currentCount)
+	if err == sql.ErrNoRows {
+		return 0, fmt.Errorf("cart entry not found")
+	}
+	if err != nil {
+		return 0, fmt.Errorf("failed to fetch cart entry: %v", err)
+	}
+
+	// Calculate new count
+	newCount := currentCount + countChange
+	if newCount < 1 {
+		return 0, fmt.Errorf("count cannot be less than 1")
+	}
+
+	// Update count
+	result, err := tx.Exec("UPDATE carts SET count = ? WHERE user_id = ? AND size_id = ?", newCount, userID, sizeID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to update cart entry: %v", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to check rows affected: %v", err)
+	}
+	if rowsAffected == 0 {
+		return 0, fmt.Errorf("cart entry not found")
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("failed to commit transaction: %v", err)
+	}
+
+	return newCount, nil
+}
+
+
+// UpdateLocationByID updates a location entry for a user based on location_id
+func (s *DBService) UpdateLocationByID(userID, locationID int, req models.UpdateLocationRequest) (models.Location, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return models.Location{}, fmt.Errorf("failed to start transaction: %v", err)
+	}
+	defer tx.Rollback()
+
+	// Build update query dynamically
+	query := "UPDATE locations SET "
+	var args []interface{}
+	var updates []string
+
+	if req.LocationName != "" {
+		updates = append(updates, "location_name = ?")
+		args = append(args, req.LocationName)
+	}
+	if req.LocationAddress != "" {
+		updates = append(updates, "location_address = ?")
+		args = append(args, req.LocationAddress)
+	}
+
+	if len(updates) == 0 {
+		return models.Location{}, fmt.Errorf("no fields provided to update")
+	}
+
+	query += strings.Join(updates, ", ") + " WHERE id = ? AND user_id = ?"
+	args = append(args, locationID, userID)
+
+	// Execute update
+	result, err := tx.Exec(query, args...)
+	if err != nil {
+		return models.Location{}, fmt.Errorf("failed to update location: %v", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return models.Location{}, fmt.Errorf("failed to check rows affected: %v", err)
+	}
+	if rowsAffected == 0 {
+		return models.Location{}, fmt.Errorf("location not found or unauthorized")
+	}
+
+	// Fetch updated location
+	var loc models.Location
+	err = tx.QueryRow("SELECT id, user_id, location_name, location_address FROM locations WHERE id = ? AND user_id = ?", 
+		locationID, userID).Scan(&loc.ID, &loc.UserID, &loc.LocationName, &loc.LocationAddress)
+	if err == sql.ErrNoRows {
+		return models.Location{}, fmt.Errorf("location not found after update")
+	}
+	if err != nil {
+		return models.Location{}, fmt.Errorf("failed to fetch updated location: %v", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return models.Location{}, fmt.Errorf("failed to commit transaction: %v", err)
+	}
+
+	return loc, nil
+}
+
+
+

@@ -57,6 +57,8 @@ type Product struct {
 	Discount      float64     `json:"discount"`
 	Description   string      `json:"description"`
 	DescriptionRu string      `json:"description_ru"`
+	IsNew         bool        `json:"is_new"`
+	FinalPrice    float64     `json:"final_price"`
 	CreatedAt     string      `json:"created_at"`
 	IsFavorite    bool        `json:"is_favorite"`
 	Thumbnails    []Thumbnail `json:"thumbnails"`
@@ -193,4 +195,15 @@ type CartRequest struct {
 	ThumbnailID int `json:"thumbnail_id"`
 	SizeID      int `json:"size_id"`
 	Count       int `json:"count"`
+}
+
+// UpdateCartRequest for updating cart entry count
+type UpdateCartRequest struct {
+	CountChange int `json:"count_change"`
+}
+
+// UpdateLocationRequest for updating a location entry
+type UpdateLocationRequest struct {
+	LocationName    string `json:"location_name,omitempty"`
+	LocationAddress string `json:"location_address,omitempty"`
 }

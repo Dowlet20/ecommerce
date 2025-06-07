@@ -78,6 +78,10 @@ func (h *Handler) SetupRoutes(router *mux.Router) {
 	userProtected.HandleFunc("/locations", h.getLocations).Methods("GET", "OPTIONS")
 	userProtected.HandleFunc("/cart/{cart_order_id}/order", h.createOrder).Methods("POST", "OPTIONS")
 	userProtected.HandleFunc("/locations/{location_id}", h.deleteLocation).Methods("DELETE", "OPTIONS")
+	userProtected.HandleFunc("/cart", h.clearCart).Methods("DELETE", "OPTIONS")
+	userProtected.HandleFunc("/cart/{size_id}", h.deleteCartBySizeID).Methods("DELETE", "OPTIONS")
+	userProtected.HandleFunc("/cart/{size_id}", h.updateCartCountBySizeID).Methods("PUT", "OPTIONS")
+	userProtected.HandleFunc("/locations/{location_id}", h.updateLocationByID).Methods("PUT", "OPTIONS")
 
 	// Public routes
 	router.HandleFunc("/superadmin/register", h.registerSuperadmin).Methods("POST", "OPTIONS")
@@ -386,6 +390,7 @@ func (h *Handler) getMarketByID(w http.ResponseWriter, r *http.Request) {
 // @Tags Products
 // @Produce json
 // @Param category_id query string false "Category ID"
+// @Param duration query integer false "Duration day for new"
 // @Param page query integer false "Page number (default: 1)"
 // @Param limit query integer false "Items per page (default: 10)"
 // @Param search query string false "Search by product name"
@@ -402,9 +407,15 @@ func (h *Handler) getAllProducts(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	durationStr := r.URL.Query().Get("duration")
 	pageStr := r.URL.Query().Get("page")
 	limitStr := r.URL.Query().Get("limit")
 	search := r.URL.Query().Get("search")
+
+	duration, err := strconv.Atoi(durationStr)
+	if err != nil || duration < 1 {
+		duration = 7
+	}
 
 	page, err := strconv.Atoi(pageStr)
 	if err != nil || page < 1 {
@@ -416,7 +427,7 @@ func (h *Handler) getAllProducts(w http.ResponseWriter, r *http.Request) {
 		limit = 10
 	}
 
-	products, err := h.db.GetPaginatedProducts(categoryID, page, limit, search)
+	products, err := h.db.GetPaginatedProducts(categoryID, duration, page, limit, search)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1549,6 +1560,29 @@ func (h *Handler) deleteCart(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]string{"message": "Cart deleted successfully"})
 }
 
+// clearCart clears all cart entries for the authenticated user
+// @Summary Clear cart
+// @Description Deletes all cart entries for the authenticated user. Requires user JWT authentication.
+// @Tags Cart
+// @Produce json
+// @Security BearerAuth
+// @Router /api/cart [delete]
+func (h *Handler) clearCart(w http.ResponseWriter, r *http.Request) {
+	claims, ok := r.Context().Value("claims").(*models.Claims)
+	if !ok || claims.UserID == 0 || claims.Role != "user" {
+		respondError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	err := h.db.ClearCart(claims.UserID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"message": "Cart cleared successfully"})
+}
+
 // LocationRequest for adding a new location
 type LocationRequest struct {
 	LocationName    string `json:"location_name"`
@@ -1791,4 +1825,155 @@ func (h *Handler) deleteLocation(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, map[string]string{"message": "Location deleted successfully"})
+}
+
+
+// deleteCartBySizeID deletes a cart entry for the authenticated user based on size_id
+// @Summary Delete cart entry by size_id
+// @Description Deletes a specific cart entry for the authenticated user based on size_id. Requires user JWT authentication.
+// @Tags Cart
+// @Produce json
+// @Security BearerAuth
+// @Param size_id path int true "Size ID"
+// @Router /api/cart/{size_id} [delete]
+func (h *Handler) deleteCartBySizeID(w http.ResponseWriter, r *http.Request) {
+	claims, ok := r.Context().Value("claims").(*models.Claims)
+	if !ok || claims.UserID == 0 || claims.Role != "user" {
+		respondError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	vars := mux.Vars(r)
+	sizeIDStr := vars["size_id"]
+	sizeID, err := strconv.Atoi(sizeIDStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid size_id")
+		return
+	}
+
+	err = h.db.DeleteCartBySizeID(claims.UserID, sizeID)
+	if err != nil {
+		if err.Error() == "cart entry not found" {
+			respondError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"message": "Cart entry deleted successfully"})
+}
+
+
+// updateCartCountBySizeID updates the count of a cart entry for the authenticated user based on size_id
+// @Summary Update cart entry count
+// @Description Updates the count of a specific cart entry for the authenticated user based on size_id. Requires user JWT authentication.
+// @Tags Cart
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param size_id path int true "Size ID"
+// @Param body body models.UpdateCartRequest true "Count change"
+// @Router /api/cart/{size_id} [put]
+func (h *Handler) updateCartCountBySizeID(w http.ResponseWriter, r *http.Request) {
+	claims, ok := r.Context().Value("claims").(*models.Claims)
+	if !ok || claims.UserID == 0 || claims.Role != "user" {
+		respondError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	vars := mux.Vars(r)
+	sizeIDStr := vars["size_id"]
+	sizeID, err := strconv.Atoi(sizeIDStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid size_id")
+		return
+	}
+
+	var req models.UpdateCartRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "Error parsing JSON body")
+		return
+	}
+
+	if req.CountChange == 0 {
+		respondError(w, http.StatusBadRequest, "Count change cannot be zero")
+		return
+	}
+
+	newCount, err := h.db.UpdateCartCountBySizeID(claims.UserID, sizeID, req.CountChange)
+	if err != nil {
+		if err.Error() == "cart entry not found" {
+			respondError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		if err.Error() == "count cannot be less than 1" {
+			respondError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"message":   "Cart entry count updated successfully",
+		"new_count": newCount,
+	})
+}
+
+
+// updateLocationByID updates a location entry for the authenticated user based on location_id
+// @Summary Update location
+// @Description Updates the name and/or address of a specific location for the authenticated user. Requires user JWT authentication.
+// @Tags Locations
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param location_id path int true "Location ID"
+// @Param body body models.UpdateLocationRequest true "Location update details"
+// @Router /api/locations/{location_id} [put]
+func (h *Handler) updateLocationByID(w http.ResponseWriter, r *http.Request) {
+	claims, ok := r.Context().Value("claims").(*models.Claims)
+	if !ok || claims.UserID == 0 || claims.Role != "user" {
+		respondError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	vars := mux.Vars(r)
+	locationIDStr := vars["location_id"]
+	locationID, err := strconv.Atoi(locationIDStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid location_id")
+		return
+	}
+
+	var req models.UpdateLocationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "Error parsing JSON body")
+		return
+	}
+
+	if req.LocationName == "" && req.LocationAddress == "" {
+		respondError(w, http.StatusBadRequest, "No fields provided to update")
+		return
+	}
+
+	updatedLocation, err := h.db.UpdateLocationByID(claims.UserID, locationID, req)
+	if err != nil {
+		if err.Error() == "location not found or unauthorized" || err.Error() == "location not found after update" {
+			respondError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		if err.Error() == "no fields provided to update" {
+			respondError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"message":  "Location updated successfully",
+		"location": updatedLocation,
+	})
 }
