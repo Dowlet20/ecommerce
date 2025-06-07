@@ -79,7 +79,7 @@ func (h *Handler) SetupRoutes(router *mux.Router) {
 	userProtected.HandleFunc("/cart/{cart_order_id}/order", h.createOrder).Methods("POST", "OPTIONS")
 	userProtected.HandleFunc("/locations/{location_id}", h.deleteLocation).Methods("DELETE", "OPTIONS")
 	userProtected.HandleFunc("/cart", h.clearCart).Methods("DELETE", "OPTIONS")
-	userProtected.HandleFunc("/cart/{size_id}", h.deleteCartBySizeID).Methods("DELETE", "OPTIONS")
+	userProtected.HandleFunc("/cart-product/{size_id}", h.deleteCartBySizeID).Methods("DELETE", "OPTIONS")
 	userProtected.HandleFunc("/cart/{size_id}", h.updateCartCountBySizeID).Methods("PUT", "OPTIONS")
 	userProtected.HandleFunc("/locations/{location_id}", h.updateLocationByID).Methods("PUT", "OPTIONS")
 
@@ -457,41 +457,41 @@ func (h *Handler) getProduct(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, product)
 }
 
-// registerUser registers a user
-// @Summary Register user
-// @Description Registers a user and sends OTP.
-// @Tags Authentication
-// @Accept json
-// @Produce json
-// @Param user body UserRegisterRequest true "User details"
-// @Router /users/register [post]
-func (h *Handler) registerUser(w http.ResponseWriter, r *http.Request) {
-	var req UserRegisterRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "Error parsing JSON body")
-		return
-	}
+// // registerUser registers a user
+// // @Summary Register user
+// // @Description Registers a user and sends OTP.
+// // @Tags Authentication
+// // @Accept json
+// // @Produce json
+// // @Param user body UserRegisterRequest true "User details"
+// // @Router /users/register [post]
+// func (h *Handler) registerUser(w http.ResponseWriter, r *http.Request) {
+// 	var req UserRegisterRequest
+// 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+// 		respondError(w, http.StatusBadRequest, "Error parsing JSON body")
+// 		return
+// 	}
 
-	if req.FullName == "" || req.Phone == "" {
-		respondError(w, http.StatusBadRequest, "Missing required fields")
-		return
-	}
+// 	if req.FullName == "" || req.Phone == "" {
+// 		respondError(w, http.StatusBadRequest, "Missing required fields")
+// 		return
+// 	}
 
-	verifID, otp, err := h.db.RegisterUser(req.FullName, req.Phone)
-	if err != nil {
-		if err.Error() == "phone number already registered" {
-			respondError(w, http.StatusConflict, err.Error())
-			return
-		}
-		respondError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
+// 	verifID, otp, err := h.db.RegisterUser(req.FullName, req.Phone)
+// 	if err != nil {
+// 		if err.Error() == "phone number already registered" {
+// 			respondError(w, http.StatusConflict, err.Error())
+// 			return
+// 		}
+// 		respondError(w, http.StatusInternalServerError, err.Error())
+// 		return
+// 	}
 
-	// TODO: Send OTP via SMS
-	fmt.Printf("OTP for %s: %s\n", req.Phone, otp)
+// 	// TODO: Send OTP via SMS
+// 	fmt.Printf("OTP for %s: %s\n", req.Phone, otp)
 
-	respondJSON(w, http.StatusOK, map[string]string{"message": "OTP sent", "verification_id": strconv.Itoa(verifID)})
-}
+// 	respondJSON(w, http.StatusOK, map[string]string{"message": "OTP sent", "verification_id": strconv.Itoa(verifID)})
+// }
 
 // // verifyUserOTP verifies OTP
 // // @Summary Verify user OTP
@@ -691,7 +691,9 @@ func (h *Handler) createProduct(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create product
-	productID, err := h.db.CreateProduct(claims.MarketID, req.CategoryID, req.Name, req.NameRu, req.Price, req.Discount, req.Description, req.DescriptionRu, req.IsActive, urlPath, filePath, filename)
+	productID, err := h.db.CreateProduct(claims.MarketID, req.CategoryID, req.Name, req.NameRu,
+		req.Price, req.Discount, req.Description, req.DescriptionRu, req.IsActive, urlPath,
+		filePath, filename)
 
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
@@ -1585,8 +1587,10 @@ func (h *Handler) clearCart(w http.ResponseWriter, r *http.Request) {
 
 // LocationRequest for adding a new location
 type LocationRequest struct {
-	LocationName    string `json:"location_name"`
-	LocationAddress string `json:"location_address"`
+	LocationName       string `json:"location_name"`
+	LocationNameRu     string `json:"location_name_ru"`
+	LocationAddress    string `json:"location_address"`
+	LocationAddressRu string `json:"location_address_ru"`
 }
 
 // OrderRequest for submitting an order
@@ -1624,7 +1628,7 @@ func (h *Handler) addLocation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	locationID, err := h.db.CreateLocation(claims.UserID, req.LocationName, req.LocationAddress)
+	locationID, err := h.db.CreateLocation(claims.UserID, req.LocationName, req.LocationNameRu, req.LocationAddress, req.LocationAddressRu)
 	if err != nil {
 		if err.Error() == "location name already exists for user" {
 			respondError(w, http.StatusConflict, err.Error())
@@ -1827,7 +1831,6 @@ func (h *Handler) deleteLocation(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]string{"message": "Location deleted successfully"})
 }
 
-
 // deleteCartBySizeID deletes a cart entry for the authenticated user based on size_id
 // @Summary Delete cart entry by size_id
 // @Description Deletes a specific cart entry for the authenticated user based on size_id. Requires user JWT authentication.
@@ -1835,7 +1838,7 @@ func (h *Handler) deleteLocation(w http.ResponseWriter, r *http.Request) {
 // @Produce json
 // @Security BearerAuth
 // @Param size_id path int true "Size ID"
-// @Router /api/cart/{size_id} [delete]
+// @Router /api/cart-product/{size_id} [delete]
 func (h *Handler) deleteCartBySizeID(w http.ResponseWriter, r *http.Request) {
 	claims, ok := r.Context().Value("claims").(*models.Claims)
 	if !ok || claims.UserID == 0 || claims.Role != "user" {
@@ -1863,7 +1866,6 @@ func (h *Handler) deleteCartBySizeID(w http.ResponseWriter, r *http.Request) {
 
 	respondJSON(w, http.StatusOK, map[string]string{"message": "Cart entry deleted successfully"})
 }
-
 
 // updateCartCountBySizeID updates the count of a cart entry for the authenticated user based on size_id
 // @Summary Update cart entry count
@@ -1920,7 +1922,6 @@ func (h *Handler) updateCartCountBySizeID(w http.ResponseWriter, r *http.Request
 		"new_count": newCount,
 	})
 }
-
 
 // updateLocationByID updates a location entry for the authenticated user based on location_id
 // @Summary Update location

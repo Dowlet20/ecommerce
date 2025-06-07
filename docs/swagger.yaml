@@ -9,7 +9,11 @@ definitions:
     properties:
       location_address:
         type: string
+      location_address_ru:
+        type: string
       location_name:
+        type: string
+      location_name_ru:
         type: string
     type: object
   api.LoginRequest:
@@ -85,13 +89,6 @@ definitions:
       username:
         type: string
     type: object
-  api.UserRegisterRequest:
-    properties:
-      full_name:
-        type: string
-      phone:
-        type: string
-    type: object
   api.VerifyCodeRequest:
     properties:
       code:
@@ -130,6 +127,13 @@ definitions:
     properties:
       count_change:
         type: integer
+    type: object
+  models.UpdateLocationRequest:
+    properties:
+      location_address:
+        type: string
+      location_name:
+        type: string
     type: object
 host: 192.168.55.42:8080
 info:
@@ -182,6 +186,24 @@ paths:
       summary: Add to cart
       tags:
       - Cart
+  /api/cart-product/{size_id}:
+    delete:
+      description: Deletes a specific cart entry for the authenticated user based
+        on size_id. Requires user JWT authentication.
+      parameters:
+      - description: Size ID
+        in: path
+        name: size_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Delete cart entry by size_id
+      tags:
+      - Cart
   /api/cart/{cart_order_id}:
     delete:
       description: Deletes all entries for a user's cart order by cart_order_id. Requires
@@ -227,23 +249,6 @@ paths:
       tags:
       - Orders
   /api/cart/{size_id}:
-    delete:
-      description: Deletes a specific cart entry for the authenticated user based
-        on size_id. Requires user JWT authentication.
-      parameters:
-      - description: Size ID
-        in: path
-        name: size_id
-        required: true
-        type: integer
-      produces:
-      - application/json
-      responses: {}
-      security:
-      - BearerAuth: []
-      summary: Delete cart entry by size_id
-      tags:
-      - Cart
     put:
       consumes:
       - application/json
@@ -355,6 +360,31 @@ paths:
       security:
       - BearerAuth: []
       summary: Delete location
+      tags:
+      - Locations
+    put:
+      consumes:
+      - application/json
+      description: Updates the name and/or address of a specific location for the
+        authenticated user. Requires user JWT authentication.
+      parameters:
+      - description: Location ID
+        in: path
+        name: location_id
+        required: true
+        type: integer
+      - description: Location update details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateLocationRequest'
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Update location
       tags:
       - Locations
   /api/market/markets/{id}/thumbnail:
@@ -809,6 +839,10 @@ paths:
         in: query
         name: category_id
         type: string
+      - description: Duration day for new
+        in: query
+        name: duration
+        type: integer
       - description: 'Page number (default: 1)'
         in: query
         name: page
@@ -913,24 +947,6 @@ paths:
       summary: Get all thumbnails with product details
       tags:
       - Products
-  /users/register:
-    post:
-      consumes:
-      - application/json
-      description: Registers a user and sends OTP.
-      parameters:
-      - description: User details
-        in: body
-        name: user
-        required: true
-        schema:
-          $ref: '#/definitions/api.UserRegisterRequest'
-      produces:
-      - application/json
-      responses: {}
-      summary: Register user
-      tags:
-      - Authentication
   /verify:
     post:
       consumes:

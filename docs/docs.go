@@ -79,6 +79,33 @@ const docTemplate = `{
                 "responses": {}
             }
         },
+        "/api/cart-product/{size_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Deletes a specific cart entry for the authenticated user based on size_id. Requires user JWT authentication.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Cart"
+                ],
+                "summary": "Delete cart entry by size_id",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Size ID",
+                        "name": "size_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
         "/api/cart/{cart_order_id}": {
             "delete": {
                 "security": [
@@ -179,31 +206,6 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/models.UpdateCartRequest"
                         }
-                    }
-                ],
-                "responses": {}
-            },
-            "delete": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Deletes a specific cart entry for the authenticated user based on size_id. Requires user JWT authentication.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Cart"
-                ],
-                "summary": "Delete cart entry by size_id",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "Size ID",
-                        "name": "size_id",
-                        "in": "path",
-                        "required": true
                     }
                 ],
                 "responses": {}
@@ -320,6 +322,43 @@ const docTemplate = `{
             }
         },
         "/api/locations/{location_id}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Updates the name and/or address of a specific location for the authenticated user. Requires user JWT authentication.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Locations"
+                ],
+                "summary": "Update location",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Location ID",
+                        "name": "location_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Location update details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateLocationRequest"
+                        }
+                    }
+                ],
+                "responses": {}
+            },
             "delete": {
                 "security": [
                     {
@@ -1029,6 +1068,12 @@ const docTemplate = `{
                     },
                     {
                         "type": "integer",
+                        "description": "Duration day for new",
+                        "name": "duration",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
                         "description": "Page number (default: 1)",
                         "name": "page",
                         "in": "query"
@@ -1171,33 +1216,6 @@ const docTemplate = `{
                 "responses": {}
             }
         },
-        "/users/register": {
-            "post": {
-                "description": "Registers a user and sends OTP.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Authentication"
-                ],
-                "summary": "Register user",
-                "parameters": [
-                    {
-                        "description": "User details",
-                        "name": "user",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/api.UserRegisterRequest"
-                        }
-                    }
-                ],
-                "responses": {}
-            }
-        },
         "/verify": {
             "post": {
                 "description": "Verifies a phone number using a 4-digit code, issuing a JWT token upon successful verification. Deletes the used code.",
@@ -1241,7 +1259,13 @@ const docTemplate = `{
                 "location_address": {
                     "type": "string"
                 },
+                "location_address_ru": {
+                    "type": "string"
+                },
                 "location_name": {
+                    "type": "string"
+                },
+                "location_name_ru": {
                     "type": "string"
                 }
             }
@@ -1357,17 +1381,6 @@ const docTemplate = `{
                 }
             }
         },
-        "api.UserRegisterRequest": {
-            "type": "object",
-            "properties": {
-                "full_name": {
-                    "type": "string"
-                },
-                "phone": {
-                    "type": "string"
-                }
-            }
-        },
         "api.VerifyCodeRequest": {
             "type": "object",
             "required": [
@@ -1424,6 +1437,17 @@ const docTemplate = `{
             "properties": {
                 "count_change": {
                     "type": "integer"
+                }
+            }
+        },
+        "models.UpdateLocationRequest": {
+            "type": "object",
+            "properties": {
+                "location_address": {
+                    "type": "string"
+                },
+                "location_name": {
+                    "type": "string"
                 }
             }
         }

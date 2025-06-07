@@ -148,9 +148,34 @@ func (s *DBService) GetMarketProducts(marketID, page, limit int) ([]models.Produ
 	offset := (page - 1) * limit
 
 	query := `
-        SELECT p.id, p.market_id, m.name, p.category_id, p.name, p.price, p.discount, p.description, p.created_at
-        FROM products p
-        INNER JOIN markets m ON p.market_id = m.id
+        SELECT 
+			p.id, 
+			p.market_id, 
+			m.name as market_name, 
+			m.name_ru as market_name_ru, 
+			p.category_id, 
+			p.name, 
+			p.name_ru, 
+			p.price, 
+			p.discount, 
+			p.description, 
+			p.description_ru, 
+			p.created_at, 
+			IF(f.user_id IS NOT NULL, true, false) as is_favorite,
+			COALESCE(t.image_url, '') as thumbnail_url,
+			CASE 
+				WHEN DATEDIFF(CURDATE(), p.created_at) <= 7 THEN true 
+				ELSE false 
+			END as isNew,
+			CASE 
+				WHEN p.discount IS NOT NULL AND p.discount > 0 
+				THEN p.price - (p.price * p.discount / 100) 
+				ELSE p.price 
+			END as final_price
+		FROM products p 
+		LEFT JOIN markets m ON p.market_id = m.id 
+		LEFT JOIN favorites f ON p.id = f.product_id 
+		LEFT JOIN thumbnails t ON p.thumbnail_id = t.id 
         WHERE p.market_id = ?
         ORDER BY p.id LIMIT ? OFFSET ?`
 
@@ -164,14 +189,14 @@ func (s *DBService) GetMarketProducts(marketID, page, limit int) ([]models.Produ
 	for rows.Next() {
 		var p models.Product
 		var createdAtStr string
-		if err := rows.Scan(&p.ID, &p.MarketID, &p.MarketName, &p.CategoryID, &p.Name, &p.Price, &p.Discount, &p.Description, &createdAtStr); err != nil {
+		if err := rows.Scan(&p.ID, &p.MarketID, &p.MarketName, &p.MarketNameRu, &p.CategoryID, &p.Name, &p.NameRu, &p.Price, &p.Discount, &p.Description, &p.DescriptionRu, &createdAtStr, &p.IsFavorite, &p.ThumbnailURL, &p.IsNew, &p.FinalPrice); err != nil {
 			return nil, fmt.Errorf("failed to scan product: %v", err)
 		}
 		p.CreatedAt = createdAtStr
-		p.Thumbnails, err = s.getProductDetails(p.ID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get product details: %v", err)
-		}
+		// p.Thumbnails, err = s.getProductDetails(p.ID)
+		// if err != nil {
+		// 	return nil, fmt.Errorf("failed to get product details: %v", err)
+		// }
 		products = append(products, p)
 	}
 
@@ -192,7 +217,7 @@ func (s *DBService) GetMarketByID(marketID int) (*models.Market, []models.Produc
 		return nil, nil, fmt.Errorf("failed to query market: %v", err)
 	}
 
-	products, err := s.GetMarketProducts(marketID, 1, 1000)
+	products, err := s.GetMarketProducts(marketID, 1, 20)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to query products: %v", err)
 	}
@@ -262,7 +287,7 @@ func (s *DBService) GetPaginatedProducts(categoryID, duration, page, limit int, 
 			p.description_ru, 
 			p.created_at, 
 			IF(f.user_id IS NOT NULL, true, false) as is_favorite,
-			COALESCE(t.thumbnail_url, '') as thumbnail_url,
+			COALESCE(t.image_url, '') as thumbnail_url,
 			CASE 
 				WHEN DATEDIFF(CURDATE(), p.created_at) <= ? THEN true 
 				ELSE false 
@@ -306,10 +331,10 @@ func (s *DBService) GetPaginatedProducts(categoryID, duration, page, limit int, 
 			&p.Description, &p.DescriptionRu, &p.CreatedAt, &p.IsFavorite, &p.ThumbnailURL, &p.IsNew, &p.FinalPrice); err != nil {
 			return nil, fmt.Errorf("failed to scan product: %v", err)
 		}
-		p.Thumbnails, err = s.getProductDetails(p.ID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get product details: %v", err)
-		}
+		// p.Thumbnails, err = s.getProductDetails(p.ID)
+		// if err != nil {
+		// 	return nil, fmt.Errorf("failed to get product details: %v", err)
+		// }
 		products = append(products, p)
 	}
 
@@ -320,11 +345,35 @@ func (s *DBService) GetPaginatedProducts(categoryID, duration, page, limit int, 
 func (s *DBService) GetProduct(id string) (models.Product, error) {
 	var p models.Product
 	err := s.db.QueryRow(`
-		SELECT p.id, p.market_id, m.name as market_name, p.name, p.price, p.discount, p.description, p.created_at, 
-		       IF(f.user_id IS NOT NULL, true, false) as is_favorite
-		FROM products p LEFT JOIN markets m on p.market_id = m.id 
-		LEFT JOIN favorites f ON p.id = f.product_id
-		WHERE p.id = ?`, id).Scan(&p.ID, &p.MarketID, &p.MarketName, &p.Name, &p.Price, &p.Discount, &p.Description, &p.CreatedAt, &p.IsFavorite)
+		SELECT 
+			p.id, 
+			p.market_id, 
+			m.name as market_name, 
+			m.name_ru as market_name_ru, 
+			p.category_id, 
+			p.name, 
+			p.name_ru, 
+			p.price, 
+			p.discount, 
+			p.description, 
+			p.description_ru, 
+			p.created_at, 
+			IF(f.user_id IS NOT NULL, true, false) as is_favorite,
+			COALESCE(t.image_url, '') as thumbnail_url,
+			CASE 
+				WHEN DATEDIFF(CURDATE(), p.created_at) <= ? THEN true 
+				ELSE false 
+			END as isNew,
+			CASE 
+				WHEN p.discount IS NOT NULL AND p.discount > 0 
+				THEN p.price - (p.price * p.discount / 100) 
+				ELSE p.price 
+			END as final_price
+		FROM products p 
+		LEFT JOIN markets m ON p.market_id = m.id 
+		LEFT JOIN favorites f ON p.id = f.product_id 
+		LEFT JOIN thumbnails t ON p.thumbnail_id = t.id 
+		WHERE p.id = ?`, 7, id).Scan(&p.ID, &p.MarketID, &p.MarketName, &p.MarketNameRu, &p.CategoryID, &p.Name, &p.NameRu, &p.Price, &p.Discount, &p.Description, &p.DescriptionRu, &p.CreatedAt, &p.IsFavorite, &p.ThumbnailURL, &p.IsNew, &p.FinalPrice)
 	if err != nil {
 		return p, err
 	}
@@ -390,7 +439,7 @@ func (s *DBService) CreateProduct(marketID, categoryID int, name string, name_ru
 
 	var thumbnailID int
 	// Insert into thumbnails table
-	result, err := s.db.Exec("INSERT INTO thumbnails (thumbnail_url) VALUES (?)", urlPath)
+	result, err := s.db.Exec("INSERT INTO thumbnails (image_url) VALUES (?)", urlPath)
 	if err != nil {
 		os.Remove(filePath) // Clean up file on error
 		return 0, fmt.Errorf("failed to save thumbnail URL: %v", err)
@@ -483,7 +532,7 @@ func (s *DBService) DeleteProduct(marketID, productID int) error {
 	}
 
 	// Fetch legacy thumbnails (linked via product_id)
-	rows, err := tx.Query("SELECT thumbnail_url FROM thumbnails WHERE product_id = ?", productID)
+	rows, err := tx.Query("SELECT image_url FROM thumbnails WHERE product_id = ?", productID)
 	if err != nil {
 		return fmt.Errorf("failed to query thumbnails: %v", err)
 	}
@@ -509,7 +558,7 @@ func (s *DBService) DeleteProduct(marketID, productID int) error {
 	// Delete main thumbnail (via thumbnail_id)
 	var thumbnailURL string
 	if thumbnailID != 0 {
-		err = tx.QueryRow("SELECT thumbnail_url FROM thumbnails WHERE id = ?", thumbnailID).Scan(&thumbnailURL)
+		err = tx.QueryRow("SELECT image_url FROM thumbnails WHERE id = ?", thumbnailID).Scan(&thumbnailURL)
 		if err != nil && err != sql.ErrNoRows {
 			return fmt.Errorf("failed to query main thumbnail: %v", err)
 		}
@@ -840,8 +889,8 @@ func (s *DBService) CreateThumbnails(thumbnails []ThumbnailData) error {
 	defer tx.Rollback()
 
 	for _, thumb := range thumbnails {
-		_, err := tx.Exec("INSERT INTO thumbnails (product_id, color, image_url) VALUES (?, ?, ?)",
-			thumb.ProductID, thumb.Color, thumb.ImageURL)
+		_, err := tx.Exec("INSERT INTO thumbnails (product_id, color, color_ru, image_url) VALUES (?, ?, ?, ?)",
+			thumb.ProductID, thumb.Color, thumb.ColorRu, thumb.ImageURL)
 		if err != nil {
 			return fmt.Errorf("failed to insert thumbnail: %v", err)
 		}
@@ -988,46 +1037,74 @@ func (s *DBService) DeleteSizeByID(marketID int, sizeID string) error {
 	return nil
 }
 
-// GetUserFavoriteProducts retrieves paginated favorite products
 func (s *DBService) GetUserFavoriteProducts(userID, page, limit int) ([]models.Product, error) {
-	if page < 1 {
-		page = 1
-	}
-	if limit < 1 {
-		limit = 10
-	}
-	offset := (page - 1) * limit
+    if page < 1 {
+        page = 1
+    }
+    if limit < 1 {
+        limit = 10
+    }
+    offset := (page - 1) * limit
 
-	query := `
-		SELECT p.id, p.market_id, m.name, p.name, p.price, p.discount, p.description, p.created_at, true as is_favorite
-		FROM products p
-		INNER JOIN markets m ON p.market_id = m.id
-		INNER JOIN favorites f ON p.id = f.product_id
-		WHERE f.user_id = ?
-		ORDER BY p.id LIMIT ? OFFSET ?`
+    query := `
+        SELECT 
+			p.id, 
+			p.market_id, 
+			m.name as market_name, 
+			m.name_ru as market_name_ru, 
+			p.category_id, 
+			p.name, 
+			p.name_ru, 
+			p.price, 
+			p.discount, 
+			p.description, 
+			p.description_ru, 
+			p.created_at, 
+			IF(f.user_id IS NOT NULL, true, false) as is_favorite,
+			COALESCE(t.image_url, '') as thumbnail_url,
+			CASE 
+				WHEN DATEDIFF(CURDATE(), p.created_at) <= 7 THEN true 
+				ELSE false 
+			END as isNew,
+			CASE 
+				WHEN p.discount IS NOT NULL AND p.discount > 0 
+				THEN p.price - (p.price * p.discount / 100) 
+				ELSE p.price 
+			END as final_price
+		FROM products p 
+		LEFT JOIN markets m ON p.market_id = m.id 
+		LEFT JOIN favorites f ON p.id = f.product_id 
+		LEFT JOIN thumbnails t ON p.thumbnail_id = t.id 
+        WHERE f.user_id = ?
+        ORDER BY p.id LIMIT ? OFFSET ?`
 
-	rows, err := s.db.Query(query, userID, limit, offset)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query favorite products: %v", err)
-	}
-	defer rows.Close()
+    rows, err := s.db.Query(query, userID, limit, offset)
+    if err != nil {
+        return nil, fmt.Errorf("failed to query favorite products: %v", err)
+    }
+    defer rows.Close()
 
-	var products []models.Product
-	for rows.Next() {
-		var p models.Product
-		var createdAt time.Time
-		if err := rows.Scan(&p.ID, &p.MarketID, &p.MarketName, &p.Name, &p.Price, &p.Discount, &p.Description, &createdAt, &p.IsFavorite); err != nil {
-			return nil, fmt.Errorf("failed to scan product: %v", err)
-		}
-		p.CreatedAt = createdAt.Format(time.RFC3339)
-		p.Thumbnails, err = s.getProductDetails(p.ID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get product details: %v", err)
-		}
-		products = append(products, p)
-	}
+    var products []models.Product
+    for rows.Next() {
+        var p models.Product
+        var createdAtStr string // Changed to string
+        if err := rows.Scan(&p.ID, &p.MarketID, &p.MarketName, &p.MarketNameRu, &p.CategoryID, &p.Name, &p.NameRu, &p.Price, &p.Discount, &p.Description, &p.DescriptionRu, &createdAtStr, &p.IsFavorite, &p.ThumbnailURL, &p.IsNew, &p.FinalPrice); err != nil {
+            return nil, fmt.Errorf("failed to scan product: %v", err)
+        }
+        // Parse the string to time.Time
+        createdAt, err := time.Parse("2006-01-02 15:04:05", createdAtStr) // Adjust format based on your DB
+        if err != nil {
+            return nil, fmt.Errorf("failed to parse created_at: %v", err)
+        }
+        p.CreatedAt = createdAt.Format(time.RFC3339)
+        // p.Thumbnails, err = s.getProductDetails(p.ID)
+        // if err != nil {
+        //     return nil, fmt.Errorf("failed to get product details: %v", err)
+        // }
+        products = append(products, p)
+    }
 
-	return products, nil
+    return products, nil
 }
 
 // ToggleFavoriteProduct adds or removes a favorite
@@ -1284,10 +1361,26 @@ func (s *DBService) AddToCart(userID int, req models.CartRequest) (int, error) {
 // GetUserCart retrieves a user's cart grouped by cart order and markets
 func (s *DBService) GetUserCart(userID int) ([]models.CartMarket, error) {
 	query := `
-		SELECT c.cart_order_id, c.user_id, m.id, m.name, m.name_ru as market_name_ru, m.delivery_price, 
-			p.id, p.name, p.name_ru, p.price, p.discount, 
-			t.id, t.image_url, t.color, t.color_ru, 
-			s.id, s.size, s.price, c.count, 
+		SELECT 
+			c.cart_order_id, 
+			c.user_id, 
+			m.id, 
+			m.name, 
+			m.name_ru as market_name_ru, 
+			m.delivery_price, 
+			p.id, 
+			p.name, 
+			p.name_ru, 
+			p.price, 
+			p.discount, 
+			t.id, 
+			t.image_url, 
+			t.color, 
+			t.color_ru, 
+			s.id, 
+			s.size, 
+			s.price, 
+			c.count, 
 			SUM(s.price*(1-COALESCE(p.discount,0)/100)*c.count) OVER (PARTITION BY m.id) AS sum
 		FROM carts c
 		JOIN markets m ON c.market_id = m.id
@@ -1349,6 +1442,8 @@ func (s *DBService) GetUserCart(userID int) ([]models.CartMarket, error) {
 
 		// Add product to market
 		market.Products = append(market.Products, models.CartProduct{
+			SizeID:       sizeID,
+			ProductID:    productID,
 			ThumbnailURL: thumbnailURL,
 			Name:         productName,
 			NameRu:       productNameRu,
@@ -1395,14 +1490,14 @@ func (s *DBService) DeleteCart(userID, cartOrderID int) error {
 }
 
 // CreateLocation adds a new location for a user
-func (s *DBService) CreateLocation(userID int, locationName, locationAddress string) (int, error) {
-	if locationName == "" || locationAddress == "" {
+func (s *DBService) CreateLocation(userID int, locationName, locationNameRu, locationAddress, locationAddressRu string) (int, error) {
+	if locationName == "" || locationAddress == "" || locationNameRu == "" || locationAddressRu == "" {
 		return 0, fmt.Errorf("location name and address are required")
 	}
 
 	result, err := s.db.Exec(`
-        INSERT INTO locations (user_id, location_name, location_address)
-        VALUES (?, ?, ?)`, userID, locationName, locationAddress)
+        INSERT INTO locations (user_id, location_name, location_name_ru, location_address, location_address_ru)
+        VALUES (?, ?, ?, ?, ?)`, userID, locationName, locationNameRu, locationAddress, locationAddressRu)
 	if err != nil {
 		if strings.Contains(err.Error(), "Duplicate entry") {
 			return 0, fmt.Errorf("location name already exists")
@@ -1421,7 +1516,7 @@ func (s *DBService) CreateLocation(userID int, locationName, locationAddress str
 // GetUserLocations retrieves all locations for a user
 func (s *DBService) GetUserLocations(userID int) ([]models.Location, error) {
 	rows, err := s.db.Query(`
-        SELECT id, user_id, location_name, location_address
+        SELECT id, user_id, location_name, location_name_ru, location_address, location_address_ru
         FROM locations
         WHERE user_id = ?
         ORDER BY id`, userID)
@@ -1433,7 +1528,8 @@ func (s *DBService) GetUserLocations(userID int) ([]models.Location, error) {
 	var locations []models.Location
 	for rows.Next() {
 		var loc models.Location
-		if err := rows.Scan(&loc.ID, &loc.UserID, &loc.LocationName, &loc.LocationAddress); err != nil {
+		if err := rows.Scan(&loc.ID, &loc.UserID, &loc.LocationName, &loc.LocationNameRu,
+			 &loc.LocationAddress, &loc.LocationAddressRu); err != nil {
 			return nil, fmt.Errorf("failed to scan location: %v", err)
 		}
 		locations = append(locations, loc)
@@ -1499,7 +1595,7 @@ func (s *DBService) CreateOrder(userID, cartOrderID, locationID int, name, phone
 // GetMarketAdminOrders retrieves orders for a market admin's market, optionally filtered by status
 func (s *DBService) GetMarketAdminOrders(marketID int, status string) ([]models.MarketAdminOrder, error) {
 	query := `
-		SELECT o.cart_order_id, l.location_address, o.status, o.name, o.created_at,
+		SELECT o.cart_order_id, l.location_address, l.location_address_ru, o.status, o.name, o.created_at,
 			SUM(s.price * (1 - COALESCE(p.discount, 0)/100) * c.count) as sum
 		FROM orders o
 		JOIN carts c ON o.cart_order_id = c.cart_order_id
@@ -1527,7 +1623,7 @@ func (s *DBService) GetMarketAdminOrders(marketID int, status string) ([]models.
 	var orders []models.MarketAdminOrder
 	for rows.Next() {
 		var o models.MarketAdminOrder
-		if err := rows.Scan(&o.CartOrderID, &o.LocationAddress, &o.Status, &o.Name, &o.CreatedAt, &o.Sum); err != nil {
+		if err := rows.Scan(&o.CartOrderID, &o.LocationAddress, &o.LocationAddressRu, &o.Status, &o.Name, &o.CreatedAt, &o.Sum); err != nil {
 			return nil, fmt.Errorf("failed to scan order: %v", err)
 		}
 		o.Sum = math.Round(o.Sum*100) / 100 // Round to 2 decimal places
@@ -1542,7 +1638,14 @@ func (s *DBService) GetMarketAdminOrderByID(marketID, cartOrderID int) (*models.
 	// Fetch order details
 	var order models.MarketAdminOrderDetail
 	err := s.db.QueryRow(`
-		SELECT o.cart_order_id, o.name, o.status, l.location_address, o.created_at,
+		SELECT 
+			o.cart_order_id, 
+			o.name, 
+			o.phone,
+			o.status, 
+			l.location_address, 
+			l.location_address_ru,
+			o.created_at,
 			SUM(s.price * (1 - COALESCE(p.discount, 0)/100) * c.count) as sum
 		FROM orders o
 		JOIN carts c ON o.cart_order_id = c.cart_order_id
@@ -1552,7 +1655,7 @@ func (s *DBService) GetMarketAdminOrderByID(marketID, cartOrderID int) (*models.
 		WHERE c.market_id = ? AND o.cart_order_id = ?
 		GROUP BY o.id`,
 		marketID, cartOrderID,
-	).Scan(&order.CartOrderID, &order.Name, &order.Status, &order.LocationAddress, &order.CreatedAt, &order.Sum)
+	).Scan(&order.CartOrderID, &order.Name, &order.Phone, &order.Status, &order.LocationAddress, &order.LocationAddressRu, &order.CreatedAt, &order.Sum)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("order not found or not for this market")
 	}
@@ -1563,7 +1666,14 @@ func (s *DBService) GetMarketAdminOrderByID(marketID, cartOrderID int) (*models.
 
 	// Fetch products
 	rows, err := s.db.Query(`
-		SELECT p.id, p.name, p.price, t.image_url, COALESCE(p.discount, 0), p.created_at,
+		SELECT 
+			p.id, 
+			p.name, 
+			p.name_ru,
+			p.price, 
+			t.image_url, 
+			COALESCE(p.discount, 0), 
+			p.created_at,
 			s.size, s.price, c.count,
 			(s.price * (1 - COALESCE(p.discount, 0)/100) * c.count) as product_sum
 		FROM carts c
@@ -1582,7 +1692,7 @@ func (s *DBService) GetMarketAdminOrderByID(marketID, cartOrderID int) (*models.
 	var products []models.MarketAdminOrderProduct
 	for rows.Next() {
 		var prod models.MarketAdminOrderProduct
-		if err := rows.Scan(&prod.ID, &prod.Name, &prod.Price, &prod.ImageURL, &prod.Discount, &prod.CreatedAt,
+		if err := rows.Scan(&prod.ID, &prod.Name, &prod.NameRu, &prod.Price, &prod.ImageURL, &prod.Discount, &prod.CreatedAt,
 			&prod.Size, &prod.SizePrice, &prod.Count, &prod.Sum); err != nil {
 			return nil, fmt.Errorf("failed to scan product: %v", err)
 		}
@@ -1686,7 +1796,6 @@ func (s *DBService) DeleteCartBySizeID(userID, sizeID int) error {
 	return nil
 }
 
-
 // UpdateCartCountBySizeID updates the count of a cart entry for a user based on size_id
 func (s *DBService) UpdateCartCountBySizeID(userID, sizeID, countChange int) (int, error) {
 	tx, err := s.db.Begin()
@@ -1731,7 +1840,6 @@ func (s *DBService) UpdateCartCountBySizeID(userID, sizeID, countChange int) (in
 
 	return newCount, nil
 }
-
 
 // UpdateLocationByID updates a location entry for a user based on location_id
 func (s *DBService) UpdateLocationByID(userID, locationID int, req models.UpdateLocationRequest) (models.Location, error) {
@@ -1778,7 +1886,7 @@ func (s *DBService) UpdateLocationByID(userID, locationID int, req models.Update
 
 	// Fetch updated location
 	var loc models.Location
-	err = tx.QueryRow("SELECT id, user_id, location_name, location_address FROM locations WHERE id = ? AND user_id = ?", 
+	err = tx.QueryRow("SELECT id, user_id, location_name, location_address FROM locations WHERE id = ? AND user_id = ?",
 		locationID, userID).Scan(&loc.ID, &loc.UserID, &loc.LocationName, &loc.LocationAddress)
 	if err == sql.ErrNoRows {
 		return models.Location{}, fmt.Errorf("location not found after update")
@@ -1793,6 +1901,3 @@ func (s *DBService) UpdateLocationByID(userID, locationID int, req models.Update
 
 	return loc, nil
 }
-
-
-
