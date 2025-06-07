@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Jun 06, 2025 at 08:59 PM
+-- Generation Time: Jun 07, 2025 at 08:51 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.1.25
 
@@ -32,8 +32,8 @@ CREATE TABLE `carts` (
   `user_id` int(11) NOT NULL,
   `market_id` int(11) NOT NULL,
   `product_id` int(11) NOT NULL,
-  `thumbnail_id` int(11) NOT NULL,
-  `size_id` int(11) NOT NULL,
+  `thumbnail_id` int(11) NOT NULL DEFAULT 0,
+  `size_id` int(11) NOT NULL DEFAULT 0,
   `count` int(11) NOT NULL CHECK (`count` > 0),
   `cart_order_id` int(11) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
@@ -43,8 +43,7 @@ CREATE TABLE `carts` (
 --
 
 INSERT INTO `carts` (`id`, `user_id`, `market_id`, `product_id`, `thumbnail_id`, `size_id`, `count`, `cart_order_id`) VALUES
-(6, 1, 9, 9, 14, 11, 3, 2),
-(7, 1, 9, 9, 14, 12, 2, 2);
+(10, 5, 12, 10, 16, 15, 7, 1);
 
 -- --------------------------------------------------------
 
@@ -64,11 +63,9 @@ CREATE TABLE `categories` (
 --
 
 INSERT INTO `categories` (`id`, `name`, `thumbnail_url`, `name_ru`) VALUES
-(5, 'egin eshik', '\\uploads\\categories\\1749105941032199000-Безымянный.png', ''),
-(6, 'sumka', '\\uploads\\categories\\1749105951397588200-1391069735_map_of_kyrgyzstan1.jpg', ''),
-(7, 'Ynamdar', '\\uploads\\categories\\1749188962296928300-clothes.png', ''),
-(8, 'taze category', '/uploads/categories/1749222419378989800-Безымянный.png', ''),
-(9, 'taze category 2', '/uploads/categories/1749223599972637400-depositphotos_386574768-stock-illustration-highly-detailed-physical-map-turkmenistan.jpg', '');
+(10, 'Egin eshik', '/uploads/categories/1749285645889377800-2025-05-12_13-45-23.png', 'одежда'),
+(12, 'esik', '/uploads/categories/1749317778803400100-logo.png', 'esik'),
+(15, 'koynek', '/uploads/categories/1749317790837857600-logo.png', 'koynek');
 
 -- --------------------------------------------------------
 
@@ -87,7 +84,7 @@ CREATE TABLE `favorites` (
 --
 
 INSERT INTO `favorites` (`id`, `user_id`, `product_id`) VALUES
-(6, 1, 7);
+(7, 5, 10);
 
 -- --------------------------------------------------------
 
@@ -99,15 +96,17 @@ CREATE TABLE `locations` (
   `id` int(11) NOT NULL,
   `user_id` int(11) NOT NULL,
   `location_name` varchar(255) NOT NULL,
-  `location_address` text NOT NULL DEFAULT 'Unknown'
+  `location_name_ru` varchar(255) DEFAULT NULL,
+  `location_address` text NOT NULL DEFAULT 'Unknown',
+  `location_address_ru` text DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Dumping data for table `locations`
 --
 
-INSERT INTO `locations` (`id`, `user_id`, `location_name`, `location_address`) VALUES
-(1, 1, 'Oyum', '4mkr, 10njy oy');
+INSERT INTO `locations` (`id`, `user_id`, `location_name`, `location_name_ru`, `location_address`, `location_address_ru`) VALUES
+(4, 5, 'Oyum', 'дом', 'Mary welayaty', 'мары');
 
 -- --------------------------------------------------------
 
@@ -130,11 +129,8 @@ CREATE TABLE `markets` (
 --
 
 INSERT INTO `markets` (`id`, `password`, `delivery_price`, `phone`, `name`, `thumbnail_url`, `name_ru`) VALUES
-(7, '$2a$10$x/KCIv6VFqa0oQJLBextmOOQYUiHe2eSkWzK.akMUSfULWQlu8vha', 0.00, '+99365123456', 'Giper', '\\uploads\\markets\\1749039275417418100-2025-05-12_13-45-23.png', ''),
-(8, '$2a$10$0BVcJ6sVcFrqrR8e4icDVumiqxl8KauyarOeUZ.Mub/fkFbaeMS2m', 123.00, '34323', 'adf', '\\uploads\\markets\\1749055115698063900-Безымянный.png', ''),
-(9, '$2a$10$gAvwAE8cKhURPw.d4XdoP.yvmgWmKUNck/nzo7JW3o450zwYwHSL2', 10.00, '+99364545354', 'Ynamdar', '\\uploads\\markets\\1749119495014604000-Безымянный.png', ''),
-(10, '$2a$10$8FZR0otnADmGdopCWPMAaeKaBKjAiUTJYSCgPHmDZiD.C2i/J5Z.K', 123.00, 'salam', 'salam', '\\uploads\\markets\\1749229052387135900-Безымянный.png', ''),
-(11, '$2a$10$4TVAKZ5lOnQPb4E7TUpgL.50yqbi5nE7/AFrjRqzm0s.RkWsR5ebS', 1231.00, 'salam1', 'salam1', '/uploads/markets/1749229109765980800-Безымянный.png', '');
+(12, '$2a$10$FU/urvZr2dvxIy9mnsgZKueYZu1XOO5SDNKgBa29EtOe1MPHajDjW', 10.00, '+99365656565', 'Ynamdar', '/uploads/markets/1749285566676151200-Безымянный.png', 'нори'),
+(13, '$2a$10$VCS.ci3NCcYJ3cn7lFiO5ue0nAv5PijDIr3zACUiSnRieMKTLfnIG', 20.00, '+99361644115', 'Begenc', '/uploads/markets/1749298306423378800-logo.png', 'Ynamdar');
 
 -- --------------------------------------------------------
 
@@ -159,7 +155,7 @@ CREATE TABLE `orders` (
 --
 
 INSERT INTO `orders` (`id`, `user_id`, `cart_order_id`, `location_id`, `name`, `phone`, `notes`, `status`, `created_at`) VALUES
-(1, 1, 2, 1, 'Meret', '+99364342364', 'Arassaja gelsin', 'pending', '2025-06-05 12:39:22');
+(3, 5, 1, 4, 'Merdan', '+99365656565', 'Bellik yok', 'pending', '2025-06-07 09:55:32');
 
 -- --------------------------------------------------------
 
@@ -187,9 +183,21 @@ CREATE TABLE `products` (
 --
 
 INSERT INTO `products` (`id`, `market_id`, `name`, `name_ru`, `price`, `discount`, `description`, `description_ru`, `category_id`, `created_at`, `is_active`, `thumbnail_id`) VALUES
-(7, 7, 'Koynek', '', 100.00, 10.00, 'gowy egin eshikler', '', 5, '2025-06-05 06:48:09', 0, NULL),
-(8, 7, 'barsetka', '', 500.00, 10.00, 'gowy sumka', '', 6, '2025-06-05 10:14:09', 0, NULL),
-(9, 9, 'barsetka', '', 500.00, 10.00, 'gowy sumka', '', 6, '2025-06-05 10:32:36', 0, NULL);
+(10, 12, 'suyji', 'нопи', 10.00, 10.00, 'Gowy onum', 'олен', 10, '2025-06-07 08:46:09', 1, 15),
+(12, 13, 'nsjsjsh', 'hsjssb', 2000.00, 0.00, 'usnsn', 'jsnsn\n', 10, '2025-06-07 14:53:52', 1, 20),
+(13, 13, 'hshhs', 'suhssh', 2000.00, 0.00, 'shhs', 'sh', 10, '2025-06-07 15:29:13', 1, 21),
+(14, 13, 'product', 'product1', 280.00, 10.00, 'nsnsb', 'jeje\n', 10, '2025-06-07 16:01:05', 1, 22),
+(15, 13, 'product', 'product1', 280.00, 10.00, 'nsnsb', 'jeje\n', 10, '2025-06-07 16:02:10', 1, 23),
+(16, 13, 'produxt', 'proeudxt', 200.00, 10.00, 'jabsvs', 'heheh', 10, '2025-06-07 17:01:28', 1, 29),
+(17, 13, 'produxt', 'proeudxt', 200.00, 10.00, 'jabsvs', 'heheh', 10, '2025-06-07 17:04:09', 1, 30),
+(18, 13, 'jsjs', 'sjsn', 200.00, 0.00, 'jsjs', 'ejsn', 10, '2025-06-07 17:05:16', 1, 31),
+(19, 13, 'jsjs', 'sjsn', 200.00, 0.00, 'jsjs', 'ejsn', 10, '2025-06-07 17:06:10', 1, 32),
+(20, 13, 'jsjs', 'sjsn', 200.00, 0.00, 'jsjs', 'ejsn', 10, '2025-06-07 17:08:19', 1, 33),
+(21, 13, 'jsjs', 'sjsn', 200.00, 0.00, 'jsjs', 'ejsn', 10, '2025-06-07 17:08:57', 1, 35),
+(22, 13, 'jsjs', 'sjsn', 200.00, 0.00, 'jsjs', 'ejsn', 10, '2025-06-07 17:12:16', 1, 37),
+(23, 13, 'jwjwj', 'hwnw', 200.00, 0.00, '7sbhw', 'shwbw', 10, '2025-06-07 17:14:56', 1, 39),
+(24, 13, 'jwjwj', 'hwnw', 200.00, 0.00, '7sbhw', 'shwbw', 10, '2025-06-07 17:16:02', 1, 41),
+(25, 13, 'jsjs', 'nsjs', 64.00, 0.00, 'nsj', 'nsj', 10, '2025-06-07 17:17:14', 1, 43);
 
 -- --------------------------------------------------------
 
@@ -210,12 +218,13 @@ CREATE TABLE `sizes` (
 --
 
 INSERT INTO `sizes` (`id`, `thumbnail_id`, `size`, `count`, `price`) VALUES
-(7, 11, 'X', 30, 100.00),
-(8, 11, 'L', 40, 100.00),
-(9, 13, 'L', 50, 100.00),
-(10, 13, 'M', 50, 100.00),
-(11, 14, 'M', 50, 100.00),
-(12, 14, 'XL', 50, 100.00);
+(13, 16, 'X', 20, 20.00),
+(15, 16, 'L', 10, 10.00),
+(17, 40, 'uwh', 1, 71.00),
+(18, 40, 'uw', 1, 17.00),
+(19, 42, 'uwh', 1, 71.00),
+(20, 42, 'uw', 1, 17.00),
+(21, 44, 'js', 1, 17.00);
 
 -- --------------------------------------------------------
 
@@ -257,10 +266,33 @@ CREATE TABLE `thumbnails` (
 --
 
 INSERT INTO `thumbnails` (`id`, `product_id`, `color`, `color_ru`, `image_url`) VALUES
-(11, 7, 'Ak', '', '/uploads/products/7/1749106114607044200-depositphotos_386574768-stock-illustration-highly-detailed-physical-map-turkmenistan.jpg'),
-(12, 7, 'Gara', '', '/uploads/products/7/1749106129084966900-hb.png'),
-(13, 8, 'Sary', '', '/uploads/products/8/1749118746707838300-Безымянный.png'),
-(14, 9, 'gara', '', '/uploads/products/9/1749119570078428600-Безымянный.png');
+(15, NULL, NULL, '', '/uploads/products/main/1749285969599167100-Безымянный.png'),
+(16, 10, 'Gyzyl', '', '/uploads/products/10/1749286278551399100-depositphotos_768077048-stock-illustration-turkmenistan-map-vector-new-2024.jpg'),
+(19, 10, 'Gara ', 'ппп', '/uploads/products/10/1749290648892407200-Безымянный.png'),
+(20, NULL, NULL, '', ''),
+(21, NULL, NULL, '', '/uploads/products/main/1749310153692919600-Screenshot_20250603-160830.jpg'),
+(22, NULL, NULL, '', '/uploads/products/main/1749312065393208100-IMG_20250528_211908.jpg'),
+(23, NULL, NULL, '', '/uploads/products/main/1749312130480421700-IMG_20250528_211908.jpg'),
+(24, 10, 'red', 'red', '/uploads/products/10/1749314171848640300-logo.png'),
+(25, 10, 'red', 'red', '/uploads/products/10/1749314197430304800-logo.png'),
+(26, 10, 'red', 'red', '/uploads/products/10/1749314200417545400-logo.png'),
+(28, 10, 'red', 'red', '/uploads/products/10/1749314968837584900-logo.png'),
+(29, NULL, NULL, '', '/uploads/products/main/1749315688096606600-L.JPEG'),
+(30, NULL, NULL, '', '/uploads/products/main/1749315849127155500-L.JPEG'),
+(31, NULL, NULL, '', '/uploads/products/main/1749315916164669300-Screenshot_20250603-160830.jpg'),
+(32, NULL, NULL, '', '/uploads/products/main/1749315970362823200-Screenshot_20250603-160830.jpg'),
+(33, NULL, NULL, '', '/uploads/products/main/1749316099412398500-Screenshot_20250603-160830.jpg'),
+(34, 20, 'ksks', 'jsjs', '/uploads/products/20/1749316099496859500-GAButcaSChCfPlIhEzMfTvnICYq.jpg'),
+(35, NULL, NULL, '', '/uploads/products/main/1749316137047404200-Screenshot_20250603-160830.jpg'),
+(36, 21, 'ksks', 'jsjs', '/uploads/products/21/1749316137315024800-GAButcaSChCfPlIhEzMfTvnICYq.jpg'),
+(37, NULL, NULL, '', '/uploads/products/main/1749316336614632900-Screenshot_20250603-160830.jpg'),
+(38, 22, 'ksks', 'jsjs', '/uploads/products/22/1749316336815473900-GAButcaSChCfPlIhEzMfTvnICYq.jpg'),
+(39, NULL, NULL, '', '/uploads/products/main/1749316496121894700-wesley-ford-0rBYLrHWcFw-unsplash.jpg'),
+(40, 23, 'uwhw', 'hwhw', '/uploads/products/23/1749316496554443000-GACsJTPVuHAzWGprcKKhXrWgf0d.jpg'),
+(41, NULL, NULL, '', '/uploads/products/main/1749316562905071300-wesley-ford-0rBYLrHWcFw-unsplash.jpg'),
+(42, 24, 'uwhw', 'hwhw', '/uploads/products/24/1749316563099739500-GACsJTPVuHAzWGprcKKhXrWgf0d.jpg'),
+(43, NULL, NULL, '', '/uploads/products/main/1749316634729459900-G8PHEmWySWuwSIadqqMmqZFTe0i.jpg'),
+(44, 25, 'jwjms', 'janq', '/uploads/products/25/1749316635256361300-GACsJTPVuHAzWGprcKKhXrWgf0d.jpg');
 
 -- --------------------------------------------------------
 
@@ -281,10 +313,7 @@ CREATE TABLE `users` (
 --
 
 INSERT INTO `users` (`id`, `full_name`, `phone`, `verified`, `created_at`) VALUES
-(1, 'John Doe', '+12345678901', 1, '2025-06-02 11:25:52'),
-(2, 'John Doe', '+12345678902', 1, '2025-06-03 11:05:47'),
-(3, 'Super Admin', '+12345678905', 1, '2025-06-03 16:19:57'),
-(4, 'John Doe 2', '+12345678909', 1, '2025-06-04 17:19:34');
+(5, 'Dowlet Gandymow', '+12345678901', 1, '2025-06-07 09:01:07');
 
 -- --------------------------------------------------------
 
@@ -314,7 +343,8 @@ ALTER TABLE `carts`
   ADD KEY `product_id` (`product_id`),
   ADD KEY `thumbnail_id` (`thumbnail_id`),
   ADD KEY `size_id` (`size_id`),
-  ADD KEY `idx_cart_order_id` (`cart_order_id`);
+  ADD KEY `idx_cart_order_id` (`cart_order_id`),
+  ADD KEY `idx_carts_user_id_size_id` (`user_id`,`size_id`);
 
 --
 -- Indexes for table `categories`
@@ -407,49 +437,49 @@ ALTER TABLE `verification_codes`
 -- AUTO_INCREMENT for table `carts`
 --
 ALTER TABLE `carts`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=11;
 
 --
 -- AUTO_INCREMENT for table `categories`
 --
 ALTER TABLE `categories`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=10;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=16;
 
 --
 -- AUTO_INCREMENT for table `favorites`
 --
 ALTER TABLE `favorites`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
 
 --
 -- AUTO_INCREMENT for table `locations`
 --
 ALTER TABLE `locations`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
 -- AUTO_INCREMENT for table `markets`
 --
 ALTER TABLE `markets`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=12;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=14;
 
 --
 -- AUTO_INCREMENT for table `orders`
 --
 ALTER TABLE `orders`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT for table `products`
 --
 ALTER TABLE `products`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=10;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=26;
 
 --
 -- AUTO_INCREMENT for table `sizes`
 --
 ALTER TABLE `sizes`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=13;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=22;
 
 --
 -- AUTO_INCREMENT for table `superadmins`
@@ -461,19 +491,19 @@ ALTER TABLE `superadmins`
 -- AUTO_INCREMENT for table `thumbnails`
 --
 ALTER TABLE `thumbnails`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=15;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=45;
 
 --
 -- AUTO_INCREMENT for table `users`
 --
 ALTER TABLE `users`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
 -- AUTO_INCREMENT for table `verification_codes`
 --
 ALTER TABLE `verification_codes`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=32;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=38;
 
 --
 -- Constraints for dumped tables

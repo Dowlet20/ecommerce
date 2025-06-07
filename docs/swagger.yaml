@@ -135,6 +135,13 @@ definitions:
       location_name:
         type: string
     type: object
+  models.UpdateProfileRequest:
+    properties:
+      full_name:
+        type: string
+      phone:
+        type: string
+    type: object
 host: 192.168.55.42:8080
 info:
   contact: {}
@@ -636,6 +643,38 @@ paths:
       summary: Add a size by thumbnail ID
       tags:
       - Products
+  /api/profile:
+    get:
+      description: Retrieves the full_name, phone, and id of the authenticated user.
+        Requires user JWT authentication.
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Get user profile
+      tags:
+      - Profile
+    put:
+      consumes:
+      - application/json
+      description: Updates the full_name and/or phone of the authenticated user. Requires
+        user JWT authentication.
+      parameters:
+      - description: Profile update details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateProfileRequest'
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Update user profile
+      tags:
+      - Profile
   /api/superadmin/categories:
     post:
       consumes:
@@ -833,21 +872,22 @@ paths:
       - Markets
   /products:
     get:
-      description: Retrieves paginated products with optional category and name search
+      description: Retrieves paginated products with optional category, name search,
+        or random selection for homepage
       parameters:
       - description: Category ID
         in: query
         name: category_id
         type: string
-      - description: Duration day for new
+      - description: 'Duration day for new (default: 7)'
         in: query
         name: duration
         type: integer
-      - description: 'Page number (default: 1)'
+      - description: 'Page number (default: 1, ignored if random=true)'
         in: query
         name: page
         type: integer
-      - description: 'Items per page (default: 10)'
+      - description: 'Items per page (default: 10, ignored if random=true)'
         in: query
         name: limit
         type: integer
@@ -855,6 +895,10 @@ paths:
         in: query
         name: search
         type: string
+      - description: 'Return 10 random products (default: false)'
+        in: query
+        name: random
+        type: boolean
       produces:
       - application/json
       responses: {}

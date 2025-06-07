@@ -262,8 +262,8 @@ func (s *DBService) UpdateProduct(marketID, productID int, name string, price fl
 	return nil
 }
 
-// GetPaginatedProducts retrieves products with pagination, optional category, and name search
-func (s *DBService) GetPaginatedProducts(categoryID, duration, page, limit int, search string) ([]models.Product, error) {
+// GetPaginatedProducts retrieves products with pagination, optional category, name search, and random selection
+func (s *DBService) GetPaginatedProducts(categoryID, duration, page, limit int, search string, random bool) ([]models.Product, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -315,7 +315,13 @@ func (s *DBService) GetPaginatedProducts(categoryID, duration, page, limit int, 
 		args = append(args, "%"+strings.ToLower(search)+"%")
 	}
 
-	query += " ORDER BY p.id LIMIT ? OFFSET ?"
+	if random {
+		query += " ORDER BY RAND()"
+	} else {
+		query += " ORDER BY p.id"
+	}
+
+	query += " LIMIT ? OFFSET ?"
 	args = append(args, limit, offset)
 
 	rows, err := s.db.Query(query, args...)
@@ -331,10 +337,6 @@ func (s *DBService) GetPaginatedProducts(categoryID, duration, page, limit int, 
 			&p.Description, &p.DescriptionRu, &p.CreatedAt, &p.IsFavorite, &p.ThumbnailURL, &p.IsNew, &p.FinalPrice); err != nil {
 			return nil, fmt.Errorf("failed to scan product: %v", err)
 		}
-		// p.Thumbnails, err = s.getProductDetails(p.ID)
-		// if err != nil {
-		// 	return nil, fmt.Errorf("failed to get product details: %v", err)
-		// }
 		products = append(products, p)
 	}
 
@@ -880,23 +882,33 @@ func (s *DBService) DeleteMarket(marketID int) error {
 	return nil
 }
 
-// CreateThumbnails creates multiple thumbnails for a product
-func (s *DBService) CreateThumbnails(thumbnails []ThumbnailData) error {
+func (s *DBService) CreateThumbnails(thumbnails []ThumbnailData) (int64, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
-		return fmt.Errorf("failed to start transaction: %v", err)
+		return 0, fmt.Errorf("failed to start transaction: %v", err)
 	}
 	defer tx.Rollback()
 
+	var lastInsertID int64
 	for _, thumb := range thumbnails {
-		_, err := tx.Exec("INSERT INTO thumbnails (product_id, color, color_ru, image_url) VALUES (?, ?, ?, ?)",
+		result, err := tx.Exec("INSERT INTO thumbnails (product_id, color, color_ru, image_url) VALUES (?, ?, ?, ?)",
 			thumb.ProductID, thumb.Color, thumb.ColorRu, thumb.ImageURL)
 		if err != nil {
-			return fmt.Errorf("failed to insert thumbnail: %v", err)
+			return 0, fmt.Errorf("failed to insert thumbnail: %v", err)
 		}
+		// Get the last inserted ID for this insert
+		id, err := result.LastInsertId()
+		if err != nil {
+			return 0, fmt.Errorf("failed to get last insert ID: %v", err)
+		}
+		lastInsertID = id // Update to the most recent ID
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("failed to commit transaction: %v", err)
+	}
+
+	return lastInsertID, nil
 }
 
 // DeleteThumbnail deletes a thumbnail by its ID
@@ -1900,4 +1912,79 @@ func (s *DBService) UpdateLocationByID(userID, locationID int, req models.Update
 	}
 
 	return loc, nil
+}
+
+// GetUserProfile retrieves the profile data for a user
+func (s *DBService) GetUserProfile(userID int) (models.UserProfile, error) {
+	var profile models.UserProfile
+	err := s.db.QueryRow("SELECT id, COALESCE(full_name, ''), COALESCE(phone, '') FROM users WHERE id = ?", userID).
+		Scan(&profile.ID, &profile.FullName, &profile.Phone)
+	if err == sql.ErrNoRows {
+		return models.UserProfile{}, fmt.Errorf("user not found")
+	}
+	if err != nil {
+		return models.UserProfile{}, fmt.Errorf("failed to fetch user profile: %v", err)
+	}
+	return profile, nil
+}
+
+// UpdateUserProfile updates the profile data for a user
+func (s *DBService) UpdateUserProfile(userID int, req models.UpdateProfileRequest) (models.UserProfile, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return models.UserProfile{}, fmt.Errorf("failed to start transaction: %v", err)
+	}
+	defer tx.Rollback()
+
+	// Build update query dynamically
+	query := "UPDATE users SET "
+	var args []interface{}
+	var updates []string
+
+	if req.FullName != "" {
+		updates = append(updates, "full_name = ?")
+		args = append(args, req.FullName)
+	}
+	if req.Phone != "" {
+		updates = append(updates, "phone = ?")
+		args = append(args, req.Phone)
+	}
+
+	if len(updates) == 0 {
+		return models.UserProfile{}, fmt.Errorf("no fields provided to update")
+	}
+
+	query += strings.Join(updates, ", ") + " WHERE id = ?"
+	args = append(args, userID)
+
+	// Execute update
+	result, err := tx.Exec(query, args...)
+	if err != nil {
+		return models.UserProfile{}, fmt.Errorf("failed to update profile: %v", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return models.UserProfile{}, fmt.Errorf("failed to check rows affected: %v", err)
+	}
+	if rowsAffected == 0 {
+		return models.UserProfile{}, fmt.Errorf("user not found")
+	}
+
+	// Fetch updated profile
+	var profile models.UserProfile
+	err = tx.QueryRow("SELECT id, COALESCE(full_name, ''), COALESCE(phone, '') FROM users WHERE id = ?", userID).
+		Scan(&profile.ID, &profile.FullName, &profile.Phone)
+	if err == sql.ErrNoRows {
+		return models.UserProfile{}, fmt.Errorf("user not found after update")
+	}
+	if err != nil {
+		return models.UserProfile{}, fmt.Errorf("failed to fetch updated profile: %v", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return models.UserProfile{}, fmt.Errorf("failed to commit transaction: %v", err)
+	}
+
+	return profile, nil
 }

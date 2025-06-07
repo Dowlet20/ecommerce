@@ -763,6 +763,54 @@ const docTemplate = `{
                 "responses": {}
             }
         },
+        "/api/profile": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieves the full_name, phone, and id of the authenticated user. Requires user JWT authentication.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Profile"
+                ],
+                "summary": "Get user profile",
+                "responses": {}
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Updates the full_name and/or phone of the authenticated user. Requires user JWT authentication.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Profile"
+                ],
+                "summary": "Update user profile",
+                "parameters": [
+                    {
+                        "description": "Profile update details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateProfileRequest"
+                        }
+                    }
+                ],
+                "responses": {}
+            }
+        },
         "/api/superadmin/categories": {
             "post": {
                 "security": [
@@ -1051,7 +1099,7 @@ const docTemplate = `{
         },
         "/products": {
             "get": {
-                "description": "Retrieves paginated products with optional category and name search",
+                "description": "Retrieves paginated products with optional category, name search, or random selection for homepage",
                 "produces": [
                     "application/json"
                 ],
@@ -1068,19 +1116,19 @@ const docTemplate = `{
                     },
                     {
                         "type": "integer",
-                        "description": "Duration day for new",
+                        "description": "Duration day for new (default: 7)",
                         "name": "duration",
                         "in": "query"
                     },
                     {
                         "type": "integer",
-                        "description": "Page number (default: 1)",
+                        "description": "Page number (default: 1, ignored if random=true)",
                         "name": "page",
                         "in": "query"
                     },
                     {
                         "type": "integer",
-                        "description": "Items per page (default: 10)",
+                        "description": "Items per page (default: 10, ignored if random=true)",
                         "name": "limit",
                         "in": "query"
                     },
@@ -1088,6 +1136,12 @@ const docTemplate = `{
                         "type": "string",
                         "description": "Search by product name",
                         "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Return 10 random products (default: false)",
+                        "name": "random",
                         "in": "query"
                     }
                 ],
@@ -1447,6 +1501,17 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "location_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.UpdateProfileRequest": {
+            "type": "object",
+            "properties": {
+                "full_name": {
+                    "type": "string"
+                },
+                "phone": {
                     "type": "string"
                 }
             }

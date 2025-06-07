@@ -215,3 +215,15 @@ type UpdateLocationRequest struct {
 	LocationName    string `json:"location_name,omitempty"`
 	LocationAddress string `json:"location_address,omitempty"`
 }
+
+
+type UserProfile struct {
+	ID       int    `json:"id"`
+	FullName string `json:"full_name"`
+	Phone    string `json:"phone"`
+}
+
+type UpdateProfileRequest struct {
+	FullName string `json:"full_name,omitempty"`
+	Phone    string `json:"phone,omitempty"`
+}

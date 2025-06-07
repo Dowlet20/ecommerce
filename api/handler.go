@@ -82,6 +82,8 @@ func (h *Handler) SetupRoutes(router *mux.Router) {
 	userProtected.HandleFunc("/cart-product/{size_id}", h.deleteCartBySizeID).Methods("DELETE", "OPTIONS")
 	userProtected.HandleFunc("/cart/{size_id}", h.updateCartCountBySizeID).Methods("PUT", "OPTIONS")
 	userProtected.HandleFunc("/locations/{location_id}", h.updateLocationByID).Methods("PUT", "OPTIONS")
+	userProtected.HandleFunc("/profile", h.getProfile).Methods("GET", "OPTIONS")
+	userProtected.HandleFunc("/profile", h.updateProfile).Methods("PUT", "OPTIONS")
 
 	// Public routes
 	router.HandleFunc("/superadmin/register", h.registerSuperadmin).Methods("POST", "OPTIONS")
@@ -386,14 +388,15 @@ func (h *Handler) getMarketByID(w http.ResponseWriter, r *http.Request) {
 
 // getAllProducts retrieves all paginated products with optional category filter
 // @Summary Get all products
-// @Description Retrieves paginated products with optional category and name search
+// @Description Retrieves paginated products with optional category, name search, or random selection for homepage
 // @Tags Products
 // @Produce json
 // @Param category_id query string false "Category ID"
-// @Param duration query integer false "Duration day for new"
-// @Param page query integer false "Page number (default: 1)"
-// @Param limit query integer false "Items per page (default: 10)"
+// @Param duration query integer false "Duration day for new (default: 7)"
+// @Param page query integer false "Page number (default: 1, ignored if random=true)"
+// @Param limit query integer false "Items per page (default: 10, ignored if random=true)"
 // @Param search query string false "Search by product name"
+// @Param random query boolean false "Return 10 random products (default: false)"
 // @Router /products [get]
 func (h *Handler) getAllProducts(w http.ResponseWriter, r *http.Request) {
 	categoryIDStr := r.URL.Query().Get("category_id")
@@ -411,6 +414,7 @@ func (h *Handler) getAllProducts(w http.ResponseWriter, r *http.Request) {
 	pageStr := r.URL.Query().Get("page")
 	limitStr := r.URL.Query().Get("limit")
 	search := r.URL.Query().Get("search")
+	randomStr := r.URL.Query().Get("random")
 
 	duration, err := strconv.Atoi(durationStr)
 	if err != nil || duration < 1 {
@@ -427,7 +431,17 @@ func (h *Handler) getAllProducts(w http.ResponseWriter, r *http.Request) {
 		limit = 10
 	}
 
-	products, err := h.db.GetPaginatedProducts(categoryID, duration, page, limit, search)
+	random, err := strconv.ParseBool(randomStr)
+	if err != nil {
+		random = false
+	}
+
+	if random {
+		page = 1
+		limit = 10
+	}
+
+	products, err := h.db.GetPaginatedProducts(categoryID, duration, page, limit, search, random)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -942,13 +956,15 @@ func (h *Handler) addProductThumbnails(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Save thumbnails to database
-	err = h.db.CreateThumbnails(thumbnails)
+	thumbnail_id, err := h.db.CreateThumbnails(thumbnails)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	respondJSON(w, http.StatusOK, map[string]string{"message": "Thumbnails added successfully"})
+	respondJSON(w, http.StatusOK, map[string]int64 {
+		"thumbnail_id":thumbnail_id,
+	})
 }
 
 // deleteThumbnail deletes a thumbnail
@@ -1978,3 +1994,80 @@ func (h *Handler) updateLocationByID(w http.ResponseWriter, r *http.Request) {
 		"location": updatedLocation,
 	})
 }
+
+
+// getProfile retrieves the authenticated user's profile
+// @Summary Get user profile
+// @Description Retrieves the full_name, phone, and id of the authenticated user. Requires user JWT authentication.
+// @Tags Profile
+// @Produce json
+// @Security BearerAuth
+// @Router /api/profile [get]
+func (h *Handler) getProfile(w http.ResponseWriter, r *http.Request) {
+	claims, ok := r.Context().Value("claims").(*models.Claims)
+	if !ok || claims.UserID == 0 || claims.Role != "user" {
+		respondError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	profile, err := h.db.GetUserProfile(claims.UserID)
+	if err != nil {
+		if err.Error() == "user not found" {
+			respondError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, profile)
+}
+
+
+// updateProfile updates the authenticated user's profile
+// @Summary Update user profile
+// @Description Updates the full_name and/or phone of the authenticated user. Requires user JWT authentication.
+// @Tags Profile
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body models.UpdateProfileRequest true "Profile update details"
+// @Router /api/profile [put]
+func (h *Handler) updateProfile(w http.ResponseWriter, r *http.Request) {
+	claims, ok := r.Context().Value("claims").(*models.Claims)
+	if !ok || claims.UserID == 0 || claims.Role != "user" {
+		respondError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	var req models.UpdateProfileRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "Error parsing JSON body")
+		return
+	}
+
+	if req.FullName == "" && req.Phone == "" {
+		respondError(w, http.StatusBadRequest, "No fields provided to update")
+		return
+	}
+
+	updatedProfile, err := h.db.UpdateUserProfile(claims.UserID, req)
+	if err != nil {
+		if err.Error() == "user not found" || err.Error() == "user not found after update" {
+			respondError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		if err.Error() == "no fields provided to update" {
+			respondError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"message": "Profile updated successfully",
+		"profile": updatedProfile,
+	})
+}
+  
