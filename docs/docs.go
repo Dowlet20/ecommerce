@@ -385,6 +385,38 @@ const docTemplate = `{
                 "responses": {}
             }
         },
+        "/api/market/markets": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieves market details and its products by market ID with pagination.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Markets"
+                ],
+                "summary": "Get market by ID",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Number of products per page (default: 20, min: 1, max: 100)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page number (default: 1, min: 1)",
+                        "name": "page",
+                        "in": "query"
+                    }
+                ],
+                "responses": {}
+            }
+        },
         "/api/market/markets/{id}/thumbnail": {
             "post": {
                 "security": [
@@ -422,6 +454,38 @@ const docTemplate = `{
                 "responses": {}
             }
         },
+        "/api/market/messages": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Creates a new message from a market to superadmin. Requires market admin JWT authentication.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Market Messages"
+                ],
+                "summary": "Create a new market message",
+                "parameters": [
+                    {
+                        "description": "Message details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateMarketMessageRequest"
+                        }
+                    }
+                ],
+                "responses": {}
+            }
+        },
         "/api/market/orders": {
             "get": {
                 "security": [
@@ -434,13 +498,13 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "Market Admin"
+                    "Orders"
                 ],
                 "summary": "Get market admin orders",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Order status (pending, processing, delivered, cancelled)",
+                        "description": "Order status (pending, delivered, cancelled)",
                         "name": "status",
                         "in": "query"
                     }
@@ -460,7 +524,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "Market Admin"
+                    "Orders"
                 ],
                 "summary": "Get market admin order by ID",
                 "parameters": [
@@ -470,6 +534,45 @@ const docTemplate = `{
                         "name": "cart_order_id",
                         "in": "path",
                         "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/api/market/orders/{order_id}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Updates the status of an order to 'canceled' or 'delivered'. Requires market admin JWT authentication.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Orders"
+                ],
+                "summary": "Update order status",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Order ID",
+                        "name": "order_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Order status update",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateOrderStatusRequest"
+                        }
                     }
                 ],
                 "responses": {}
@@ -670,7 +773,119 @@ const docTemplate = `{
                 "responses": {}
             }
         },
+        "/api/market/profile": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieves the market profile data for the authenticated market admin. Requires market admin JWT authentication.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Market"
+                ],
+                "summary": "Get market profile",
+                "responses": {}
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Updates the market profile data (except phone) for the authenticated market admin. Supports thumbnail file upload. Requires market admin JWT authentication.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Market"
+                ],
+                "summary": "Update market profile",
+                "parameters": [
+                    {
+                        "type": "number",
+                        "description": "Delivery price",
+                        "name": "delivery_price",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Market name",
+                        "name": "name",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Market name in Russian",
+                        "name": "name_ru",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Market location",
+                        "name": "location",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Market location in Russian",
+                        "name": "location_ru",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "file",
+                        "description": "Thumbnail image (PNG/JPEG, max 5MB)",
+                        "name": "thumbnail",
+                        "in": "formData"
+                    }
+                ],
+                "responses": {}
+            }
+        },
         "/api/market/sizes/{size_id}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Updates the count, price, and size of a size entry. Requires market admin JWT authentication.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Markets"
+                ],
+                "summary": "Update a size",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Size ID",
+                        "name": "size_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Size update details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateSizeRequest"
+                        }
+                    }
+                ],
+                "responses": {}
+            },
             "delete": {
                 "security": [
                     {
@@ -698,6 +913,55 @@ const docTemplate = `{
             }
         },
         "/api/market/thumbnails/{thumbnail_id}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Updates a thumbnail’s color, color_ru, and image. Deletes the old image and uploads a new one. Requires market admin JWT authentication.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Markets"
+                ],
+                "summary": "Update a thumbnail",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Thumbnail ID",
+                        "name": "thumbnail_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Color for thumbnail",
+                        "name": "color",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Color_ru for thumbnail",
+                        "name": "color_ru",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "file",
+                        "description": "New thumbnail image",
+                        "name": "thumbnail",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            },
             "delete": {
                 "security": [
                     {
@@ -763,6 +1027,38 @@ const docTemplate = `{
                 "responses": {}
             }
         },
+        "/api/messages": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Creates a new message to superadmin. Requires user JWT authentication.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "User Messages"
+                ],
+                "summary": "Create a new message",
+                "parameters": [
+                    {
+                        "description": "Message details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateMessageRequest"
+                        }
+                    }
+                ],
+                "responses": {}
+            }
+        },
         "/api/profile": {
             "get": {
                 "security": [
@@ -806,6 +1102,69 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/models.UpdateProfileRequest"
                         }
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/api/superadmin/banners": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Creates a new banner with a description and thumbnail image. Requires superadmin JWT authentication.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Banners"
+                ],
+                "summary": "Create a new banner",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Banner description (max 255 characters)",
+                        "name": "description",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "file",
+                        "description": "Thumbnail image (PNG/JPEG, max 5MB)",
+                        "name": "thumbnail",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/api/superadmin/banners/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Deletes a banner by ID and removes its thumbnail image. Requires superadmin JWT authentication.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Banners"
+                ],
+                "summary": "Delete a banner",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Banner ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
                     }
                 ],
                 "responses": {}
@@ -881,6 +1240,51 @@ const docTemplate = `{
                 "responses": {}
             }
         },
+        "/api/superadmin/market-messages": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieves all messages sent by markets to superadmin. Requires superadmin JWT authentication.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Market Messages"
+                ],
+                "summary": "Get all market messages",
+                "responses": {}
+            }
+        },
+        "/api/superadmin/market-messages/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Deletes a specific market message by ID. Requires superadmin JWT authentication.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Market Messages"
+                ],
+                "summary": "Delete a market message",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Message ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
         "/api/superadmin/markets": {
             "post": {
                 "security": [
@@ -911,6 +1315,20 @@ const docTemplate = `{
                         "type": "string",
                         "description": "Market name russian",
                         "name": "name_ru",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Market location",
+                        "name": "location",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Market location russian",
+                        "name": "location_ru",
                         "in": "formData",
                         "required": true
                     },
@@ -969,6 +1387,90 @@ const docTemplate = `{
                         "required": true
                     }
                 ],
+                "responses": {}
+            }
+        },
+        "/api/superadmin/user-messages": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieves all messages sent by users to superadmin. Requires superadmin JWT authentication.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "User Messages"
+                ],
+                "summary": "Get all user messages",
+                "responses": {}
+            }
+        },
+        "/api/superadmin/user-messages/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Deletes a specific user message by ID. Requires superadmin JWT authentication.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "User Messages"
+                ],
+                "summary": "Delete a user message",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Message ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/api/user-orders": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieves all orders for the market admin's market, optionally filtered by status. Requires market admin JWT authentication.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Orders"
+                ],
+                "summary": "Get market admin orders",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Order status (pending, delivered, cancelled)",
+                        "name": "status",
+                        "in": "query"
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/banners": {
+            "get": {
+                "description": "Retrieves all banners with their ID, description, and thumbnail URL. Public endpoint, no authentication required.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Banners"
+                ],
+                "summary": "Get all banners",
                 "responses": {}
             }
         },
@@ -1072,12 +1574,32 @@ const docTemplate = `{
                     "Markets"
                 ],
                 "summary": "Get all markets",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Duration day for new (default: 7)",
+                        "name": "duration",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Filter new markets (default: false)",
+                        "name": "is_new",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Filter vip markets (default: false)",
+                        "name": "is_vip",
+                        "in": "query"
+                    }
+                ],
                 "responses": {}
             }
         },
         "/markets/{id}": {
             "get": {
-                "description": "Retrieves market details and its products by market ID.",
+                "description": "Retrieves market details and its products by market ID with pagination.",
                 "produces": [
                     "application/json"
                 ],
@@ -1092,6 +1614,18 @@ const docTemplate = `{
                         "name": "id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Number of products per page (default: 20, min: 1, max: 100)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page number (default: 1, min: 1)",
+                        "name": "page",
+                        "in": "query"
                     }
                 ],
                 "responses": {}
@@ -1099,7 +1633,7 @@ const docTemplate = `{
         },
         "/products": {
             "get": {
-                "description": "Retrieves paginated products with optional category, name search, or random selection for homepage",
+                "description": "Retrieves paginated products with optional category, price range, discount, new status, sorting, name search, or random selection for homepage",
                 "produces": [
                     "application/json"
                 ],
@@ -1142,6 +1676,36 @@ const docTemplate = `{
                         "type": "boolean",
                         "description": "Return 10 random products (default: false)",
                         "name": "random",
+                        "in": "query"
+                    },
+                    {
+                        "type": "number",
+                        "description": "Minimum final price",
+                        "name": "start_price",
+                        "in": "query"
+                    },
+                    {
+                        "type": "number",
+                        "description": "Maximum final price",
+                        "name": "end_price",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sort order: cheap_to_expensive, expensive_to_cheap (default: by ID)",
+                        "name": "sort",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Filter products with discount (default: false)",
+                        "name": "has_discount",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Filter new products (default: false)",
+                        "name": "is_new",
                         "in": "query"
                     }
                 ],
@@ -1469,6 +2033,34 @@ const docTemplate = `{
                 }
             }
         },
+        "models.CreateMarketMessageRequest": {
+            "type": "object",
+            "properties": {
+                "full_name": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.CreateMessageRequest": {
+            "type": "object",
+            "properties": {
+                "full_name": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                }
+            }
+        },
         "models.SuperadminRegisterRequest": {
             "type": "object",
             "properties": {
@@ -1500,7 +2092,21 @@ const docTemplate = `{
                 "location_address": {
                     "type": "string"
                 },
+                "location_address_ru": {
+                    "type": "string"
+                },
                 "location_name": {
+                    "type": "string"
+                },
+                "location_name_ru": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.UpdateOrderStatusRequest": {
+            "type": "object",
+            "properties": {
+                "status": {
                     "type": "string"
                 }
             }
@@ -1512,6 +2118,20 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "phone": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.UpdateSizeRequest": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "price": {
+                    "type": "number"
+                },
+                "size": {
                     "type": "string"
                 }
             }

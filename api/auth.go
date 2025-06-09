@@ -139,6 +139,111 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+
+// loginSuperadmin authenticates a superadmin
+// @Summary Login superadmin
+// @Description Authenticates a superadmin and returns a JWT token.
+// @Tags Superadmin
+// @Accept json
+// @Produce json
+// @Param credentials body SuperadminRequest true "Superadmin credentials"
+// @Router /superadmin/login [post]
+func (h *Handler) loginSuperadmin(w http.ResponseWriter, r *http.Request) {
+	var req SuperadminRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "Error parsing JSON body")
+		return
+	}
+
+	if req.Username == "" || req.Password == "" {
+		respondError(w, http.StatusBadRequest, "Missing credentials")
+		return
+	}
+
+	userID, err := h.db.AuthenticateSuperadmin(req.Username, req.Password)
+	if err != nil {
+		respondError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+
+	token, err := h.generateJWT(userID, 0, "superadmin")
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to generate token")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"token": token})
+}
+
+// loginMarket authenticates a market admin
+// @Summary Login market admin
+// @Description Authenticates a market admin and returns a JWT token.
+// @Tags Authentication
+// @Accept json
+// @Produce json
+// @Param credentials body MarketRequest true "Market admin credentials"
+// @Router /market/login [post]
+func (h *Handler) loginMarket(w http.ResponseWriter, r *http.Request) {
+	var req MarketRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "Error parsing JSON body")
+		return
+	}
+
+	if req.Phone == "" || req.Password == "" {
+		respondError(w, http.StatusBadRequest, "Missing credentials")
+		return
+	}
+
+	userID, marketID, err := h.db.AuthenticateMarket(req.Phone, req.Password)
+	if err != nil {
+		respondError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+
+	token, err := h.generateJWT(userID, marketID, "market_admin")
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to generate token")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"token": token})
+}
+
+
+// registerSuperadmin registers a new superadmin
+// @Summary Register a new superadmin
+// @Description Registers a new superadmin with username, full name, phone, and password.
+// @Tags Superadmin
+// @Accept json
+// @Produce json
+// @Param superadmin body models.SuperadminRegisterRequest true "Superadmin details"
+// @Router /superadmin/register [post]
+func (h *Handler) registerSuperadmin(w http.ResponseWriter, r *http.Request) {
+	var req models.SuperadminRegisterRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "Error parsing JSON body")
+		return
+	}
+
+	if req.Username == "" || req.FullName == "" || req.Phone == "" || req.Password == "" {
+		respondError(w, http.StatusBadRequest, "Missing required fields")
+		return
+	}
+
+	superadminID, err := h.db.RegisterSuperadmin(req.Username, req.FullName, req.Phone, req.Password)
+	if err != nil {
+		if err.Error() == "username or phone already exists" {
+			respondError(w, http.StatusConflict, err.Error())
+			return
+		}
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]int{"superadmin_id": superadminID})
+}
+
 // verifyCode verifies the code and completes registration/login
 // @Summary Verify phone number
 // @Description Verifies a phone number using a 4-digit code, issuing a JWT token upon successful verification. Deletes the used code.
@@ -250,7 +355,9 @@ func (h *Handler) authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// Add claims to context
+		// // Add claims to context duzedildi.....
+		// type contextKey string
+		// const claimsKey contextKey = "claims"
 		ctx := context.WithValue(r.Context(), "claims", claims)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
@@ -278,6 +385,22 @@ func generateJWT(userID int) (string, error) {
 		return "", fmt.Errorf("failed to sign token: %v", err)
 	}
 	return signedToken, nil
+}
+
+
+// generateJWT creates a JWT
+func (h *Handler) generateJWT(userID, marketID int, role string) (string, error) {
+	claims := &models.Claims{
+		UserID:   userID,
+		MarketID: marketID,
+		Role:     role,
+		StandardClaims: jwt.StandardClaims{
+			ExpiresAt: time.Now().Add(24 * time.Hour).Unix(),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString([]byte("your-secret-key"))
 }
 
 

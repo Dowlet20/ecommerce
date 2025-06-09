@@ -112,6 +112,24 @@ definitions:
       thumbnail_id:
         type: integer
     type: object
+  models.CreateMarketMessageRequest:
+    properties:
+      full_name:
+        type: string
+      message:
+        type: string
+      phone:
+        type: string
+    type: object
+  models.CreateMessageRequest:
+    properties:
+      full_name:
+        type: string
+      message:
+        type: string
+      phone:
+        type: string
+    type: object
   models.SuperadminRegisterRequest:
     properties:
       full_name:
@@ -132,7 +150,16 @@ definitions:
     properties:
       location_address:
         type: string
+      location_address_ru:
+        type: string
       location_name:
+        type: string
+      location_name_ru:
+        type: string
+    type: object
+  models.UpdateOrderStatusRequest:
+    properties:
+      status:
         type: string
     type: object
   models.UpdateProfileRequest:
@@ -140,6 +167,15 @@ definitions:
       full_name:
         type: string
       phone:
+        type: string
+    type: object
+  models.UpdateSizeRequest:
+    properties:
+      count:
+        type: integer
+      price:
+        type: number
+      size:
         type: string
     type: object
 host: 192.168.55.42:8080
@@ -394,6 +430,26 @@ paths:
       summary: Update location
       tags:
       - Locations
+  /api/market/markets:
+    get:
+      description: Retrieves market details and its products by market ID with pagination.
+      parameters:
+      - description: 'Number of products per page (default: 20, min: 1, max: 100)'
+        in: query
+        name: limit
+        type: integer
+      - description: 'Page number (default: 1, min: 1)'
+        in: query
+        name: page
+        type: integer
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Get market by ID
+      tags:
+      - Markets
   /api/market/markets/{id}/thumbnail:
     post:
       consumes:
@@ -418,12 +474,33 @@ paths:
       summary: Upload market thumbnail
       tags:
       - Markets
+  /api/market/messages:
+    post:
+      consumes:
+      - application/json
+      description: Creates a new message from a market to superadmin. Requires market
+        admin JWT authentication.
+      parameters:
+      - description: Message details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateMarketMessageRequest'
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Create a new market message
+      tags:
+      - Market Messages
   /api/market/orders:
     get:
       description: Retrieves all orders for the market admin's market, optionally
         filtered by status. Requires market admin JWT authentication.
       parameters:
-      - description: Order status (pending, processing, delivered, cancelled)
+      - description: Order status (pending, delivered, cancelled)
         in: query
         name: status
         type: string
@@ -434,7 +511,7 @@ paths:
       - BearerAuth: []
       summary: Get market admin orders
       tags:
-      - Market Admin
+      - Orders
   /api/market/orders/{cart_order_id}:
     get:
       description: Retrieves detailed order information for a specific cart_order_id.
@@ -452,7 +529,33 @@ paths:
       - BearerAuth: []
       summary: Get market admin order by ID
       tags:
-      - Market Admin
+      - Orders
+  /api/market/orders/{order_id}:
+    put:
+      consumes:
+      - application/json
+      description: Updates the status of an order to 'canceled' or 'delivered'. Requires
+        market admin JWT authentication.
+      parameters:
+      - description: Order ID
+        in: path
+        name: order_id
+        required: true
+        type: integer
+      - description: Order status update
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateOrderStatusRequest'
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Update order status
+      tags:
+      - Orders
   /api/market/products:
     post:
       consumes:
@@ -584,6 +687,56 @@ paths:
       summary: Update a product
       tags:
       - Products
+  /api/market/profile:
+    get:
+      description: Retrieves the market profile data for the authenticated market
+        admin. Requires market admin JWT authentication.
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Get market profile
+      tags:
+      - Market
+    put:
+      consumes:
+      - multipart/form-data
+      description: Updates the market profile data (except phone) for the authenticated
+        market admin. Supports thumbnail file upload. Requires market admin JWT authentication.
+      parameters:
+      - description: Delivery price
+        in: formData
+        name: delivery_price
+        type: number
+      - description: Market name
+        in: formData
+        name: name
+        type: string
+      - description: Market name in Russian
+        in: formData
+        name: name_ru
+        type: string
+      - description: Market location
+        in: formData
+        name: location
+        type: string
+      - description: Market location in Russian
+        in: formData
+        name: location_ru
+        type: string
+      - description: Thumbnail image (PNG/JPEG, max 5MB)
+        in: formData
+        name: thumbnail
+        type: file
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Update market profile
+      tags:
+      - Market
   /api/market/sizes/{size_id}:
     delete:
       description: Deletes a size by its ID. Requires JWT authentication.
@@ -601,6 +754,31 @@ paths:
       summary: Delete a size by ID
       tags:
       - Products
+    put:
+      consumes:
+      - application/json
+      description: Updates the count, price, and size of a size entry. Requires market
+        admin JWT authentication.
+      parameters:
+      - description: Size ID
+        in: path
+        name: size_id
+        required: true
+        type: integer
+      - description: Size update details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateSizeRequest'
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Update a size
+      tags:
+      - Markets
   /api/market/thumbnails/{thumbnail_id}:
     delete:
       description: Deletes a thumbnail by its ID. Requires JWT authentication.
@@ -618,6 +796,40 @@ paths:
       summary: Delete a thumbnail
       tags:
       - Products
+    put:
+      consumes:
+      - multipart/form-data
+      description: Updates a thumbnail’s color, color_ru, and image. Deletes the old
+        image and uploads a new one. Requires market admin JWT authentication.
+      parameters:
+      - description: Thumbnail ID
+        in: path
+        name: thumbnail_id
+        required: true
+        type: integer
+      - description: Color for thumbnail
+        in: formData
+        name: color
+        required: true
+        type: string
+      - description: Color_ru for thumbnail
+        in: formData
+        name: color_ru
+        required: true
+        type: string
+      - description: New thumbnail image
+        in: formData
+        name: thumbnail
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Update a thumbnail
+      tags:
+      - Markets
   /api/market/thumbnails/{thumbnail_id}/size:
     post:
       consumes:
@@ -643,6 +855,26 @@ paths:
       summary: Add a size by thumbnail ID
       tags:
       - Products
+  /api/messages:
+    post:
+      consumes:
+      - application/json
+      description: Creates a new message to superadmin. Requires user JWT authentication.
+      parameters:
+      - description: Message details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateMessageRequest'
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Create a new message
+      tags:
+      - User Messages
   /api/profile:
     get:
       description: Retrieves the full_name, phone, and id of the authenticated user.
@@ -675,6 +907,48 @@ paths:
       summary: Update user profile
       tags:
       - Profile
+  /api/superadmin/banners:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Creates a new banner with a description and thumbnail image. Requires
+        superadmin JWT authentication.
+      parameters:
+      - description: Banner description (max 255 characters)
+        in: formData
+        name: description
+        type: string
+      - description: Thumbnail image (PNG/JPEG, max 5MB)
+        in: formData
+        name: thumbnail
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Create a new banner
+      tags:
+      - Banners
+  /api/superadmin/banners/{id}:
+    delete:
+      description: Deletes a banner by ID and removes its thumbnail image. Requires
+        superadmin JWT authentication.
+      parameters:
+      - description: Banner ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Delete a banner
+      tags:
+      - Banners
   /api/superadmin/categories:
     post:
       consumes:
@@ -722,6 +996,36 @@ paths:
       summary: Delete a category
       tags:
       - Categories
+  /api/superadmin/market-messages:
+    get:
+      description: Retrieves all messages sent by markets to superadmin. Requires
+        superadmin JWT authentication.
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Get all market messages
+      tags:
+      - Market Messages
+  /api/superadmin/market-messages/{id}:
+    delete:
+      description: Deletes a specific market message by ID. Requires superadmin JWT
+        authentication.
+      parameters:
+      - description: Message ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Delete a market message
+      tags:
+      - Market Messages
   /api/superadmin/markets:
     post:
       consumes:
@@ -737,6 +1041,16 @@ paths:
       - description: Market name russian
         in: formData
         name: name_ru
+        required: true
+        type: string
+      - description: Market location
+        in: formData
+        name: location
+        required: true
+        type: string
+      - description: Market location russian
+        in: formData
+        name: location_ru
         required: true
         type: string
       - description: Admin phone
@@ -784,6 +1098,63 @@ paths:
       summary: Delete a market
       tags:
       - Markets
+  /api/superadmin/user-messages:
+    get:
+      description: Retrieves all messages sent by users to superadmin. Requires superadmin
+        JWT authentication.
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Get all user messages
+      tags:
+      - User Messages
+  /api/superadmin/user-messages/{id}:
+    delete:
+      description: Deletes a specific user message by ID. Requires superadmin JWT
+        authentication.
+      parameters:
+      - description: Message ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Delete a user message
+      tags:
+      - User Messages
+  /api/user-orders:
+    get:
+      description: Retrieves all orders for the market admin's market, optionally
+        filtered by status. Requires market admin JWT authentication.
+      parameters:
+      - description: Order status (pending, delivered, cancelled)
+        in: query
+        name: status
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Get market admin orders
+      tags:
+      - Orders
+  /banners:
+    get:
+      description: Retrieves all banners with their ID, description, and thumbnail
+        URL. Public endpoint, no authentication required.
+      produces:
+      - application/json
+      responses: {}
+      summary: Get all banners
+      tags:
+      - Banners
   /categories:
     get:
       description: Retrieves a paginated list of categories with optional name search.
@@ -849,6 +1220,19 @@ paths:
       consumes:
       - application/json
       description: Retrieves a list of all markets. Requires JWT authentication.
+      parameters:
+      - description: 'Duration day for new (default: 7)'
+        in: query
+        name: duration
+        type: integer
+      - description: 'Filter new markets (default: false)'
+        in: query
+        name: is_new
+        type: boolean
+      - description: 'Filter vip markets (default: false)'
+        in: query
+        name: is_vip
+        type: boolean
       produces:
       - application/json
       responses: {}
@@ -857,13 +1241,21 @@ paths:
       - Markets
   /markets/{id}:
     get:
-      description: Retrieves market details and its products by market ID.
+      description: Retrieves market details and its products by market ID with pagination.
       parameters:
       - description: Market ID
         in: path
         name: id
         required: true
         type: string
+      - description: 'Number of products per page (default: 20, min: 1, max: 100)'
+        in: query
+        name: limit
+        type: integer
+      - description: 'Page number (default: 1, min: 1)'
+        in: query
+        name: page
+        type: integer
       produces:
       - application/json
       responses: {}
@@ -872,8 +1264,8 @@ paths:
       - Markets
   /products:
     get:
-      description: Retrieves paginated products with optional category, name search,
-        or random selection for homepage
+      description: Retrieves paginated products with optional category, price range,
+        discount, new status, sorting, name search, or random selection for homepage
       parameters:
       - description: Category ID
         in: query
@@ -898,6 +1290,27 @@ paths:
       - description: 'Return 10 random products (default: false)'
         in: query
         name: random
+        type: boolean
+      - description: Minimum final price
+        in: query
+        name: start_price
+        type: number
+      - description: Maximum final price
+        in: query
+        name: end_price
+        type: number
+      - description: 'Sort order: cheap_to_expensive, expensive_to_cheap (default:
+          by ID)'
+        in: query
+        name: sort
+        type: string
+      - description: 'Filter products with discount (default: false)'
+        in: query
+        name: has_discount
+        type: boolean
+      - description: 'Filter new products (default: false)'
+        in: query
+        name: is_new
         type: boolean
       produces:
       - application/json

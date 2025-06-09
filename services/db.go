@@ -4,8 +4,10 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"fmt"
+	"io"
 	"math"
 	"math/big"
+	"mime/multipart"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -119,8 +121,38 @@ func (s *DBService) GetUserByPhone(phone string) (int, error) {
 }
 
 // GetMarkets retrieves all markets
-func (s *DBService) GetMarkets() ([]models.Market, error) {
-	rows, err := s.db.Query("SELECT id, name, name_ru, thumbnail_url, delivery_price, phone FROM markets")
+func (s *DBService) GetMarkets(isNew, isVip bool, duration int) ([]models.Market, error) {
+	query := `SELECT 
+		id, 
+		name, 
+		name_ru, 
+		location, 
+		location_ru, 
+		thumbnail_url, 
+		delivery_price, 
+		phone,
+		CASE 
+			WHEN DATEDIFF(CURDATE(), created_at) <= ? THEN true 
+			ELSE false 
+		END as isNew,
+		isVIP
+		FROM markets WHERE 1=1`
+
+	args := []interface{}{duration}
+
+	if isNew {
+		query += " AND DATEDIFF(CURDATE(), created_at) <= ?"
+		args = append(args, duration)
+	}
+
+	if isVip {
+		query += " AND isVIP = ?"
+		args = append(args, true)
+	}
+
+	query += " ORDER BY id DESC"
+
+	rows, err := s.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +161,7 @@ func (s *DBService) GetMarkets() ([]models.Market, error) {
 	var markets []models.Market = []models.Market{}
 	for rows.Next() {
 		var m models.Market
-		if err := rows.Scan(&m.ID, &m.Name, &m.NameRu, &m.ThumbnailURL, &m.DeliveryPrice, &m.Phone); err != nil {
+		if err := rows.Scan(&m.ID, &m.Name, &m.NameRu, &m.Location, &m.LocationRu, &m.ThumbnailURL, &m.DeliveryPrice, &m.Phone, &m.IsNew, &m.IsVIP); err != nil {
 			return nil, err
 		}
 		markets = append(markets, m)
@@ -154,6 +186,8 @@ func (s *DBService) GetMarketProducts(marketID, page, limit int) ([]models.Produ
 			m.name as market_name, 
 			m.name_ru as market_name_ru, 
 			p.category_id, 
+			c.name as category_name,
+			c.name_ru as category_name_ru,
 			p.name, 
 			p.name_ru, 
 			p.price, 
@@ -172,7 +206,8 @@ func (s *DBService) GetMarketProducts(marketID, page, limit int) ([]models.Produ
 				THEN p.price - (p.price * p.discount / 100) 
 				ELSE p.price 
 			END as final_price
-		FROM products p 
+		FROM products p
+		LEFT JOIN categories c ON p.category_id = c.id 
 		LEFT JOIN markets m ON p.market_id = m.id 
 		LEFT JOIN favorites f ON p.id = f.product_id 
 		LEFT JOIN thumbnails t ON p.thumbnail_id = t.id 
@@ -185,15 +220,15 @@ func (s *DBService) GetMarketProducts(marketID, page, limit int) ([]models.Produ
 	}
 	defer rows.Close()
 
-	var products []models.Product
+	var products []models.Product = []models.Product{}
 	for rows.Next() {
 		var p models.Product
 		var createdAtStr string
-		if err := rows.Scan(&p.ID, &p.MarketID, &p.MarketName, &p.MarketNameRu, &p.CategoryID, &p.Name, &p.NameRu, &p.Price, &p.Discount, &p.Description, &p.DescriptionRu, &createdAtStr, &p.IsFavorite, &p.ThumbnailURL, &p.IsNew, &p.FinalPrice); err != nil {
+		if err := rows.Scan(&p.ID, &p.MarketID, &p.MarketName, &p.MarketNameRu, &p.CategoryID, &p.CategoryName, &p.CategoryNameRu, &p.Name, &p.NameRu, &p.Price, &p.Discount, &p.Description, &p.DescriptionRu, &createdAtStr, &p.IsFavorite, &p.ThumbnailURL, &p.IsNew, &p.FinalPrice); err != nil {
 			return nil, fmt.Errorf("failed to scan product: %v", err)
 		}
 		p.CreatedAt = createdAtStr
-		// p.Thumbnails, err = s.getProductDetails(p.ID)
+		p.Thumbnails = []models.Thumbnail{}
 		// if err != nil {
 		// 	return nil, fmt.Errorf("failed to get product details: %v", err)
 		// }
@@ -202,31 +237,37 @@ func (s *DBService) GetMarketProducts(marketID, page, limit int) ([]models.Produ
 
 	return products, nil
 }
-
-// GetMarketByID retrieves a market and its products by market ID
-func (s *DBService) GetMarketByID(marketID int) (*models.Market, []models.Product, error) {
+// GetMarketByID retrieves a market and its products by market ID with pagination
+func (s *DBService) GetMarketByID(marketID, page, limit int) (*models.Market, []models.Product, int, error) {
 	var market models.Market
 	err := s.db.QueryRow(`
-        SELECT id, phone, name, name_ru, delivery_price, thumbnail_url
+        SELECT id, phone, name, name_ru, location, location_ru, delivery_price, thumbnail_url
         FROM markets WHERE id = ?`, marketID).
-		Scan(&market.ID, &market.Phone, &market.Name, &market.NameRu, &market.DeliveryPrice, &market.ThumbnailURL)
+		Scan(&market.ID, &market.Phone, &market.Name, &market.NameRu, &market.Location, &market.LocationRu, &market.DeliveryPrice, &market.ThumbnailURL)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, nil, fmt.Errorf("market not found")
+			return nil, nil, 0, fmt.Errorf("market not found")
 		}
-		return nil, nil, fmt.Errorf("failed to query market: %v", err)
+		return nil, nil, 0, fmt.Errorf("failed to query market: %v", err)
 	}
 
-	products, err := s.GetMarketProducts(marketID, 1, 20)
+	products, err := s.GetMarketProducts(marketID, page, limit)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to query products: %v", err)
+		return nil, nil, 0, fmt.Errorf("failed to query products: %v", err)
 	}
 
-	return &market, products, nil
+	// Get total product count
+	var totalCount int
+	err = s.db.QueryRow("SELECT COUNT(*) FROM products WHERE market_id = ?", marketID).Scan(&totalCount)
+	if err != nil {
+		return nil, nil, 0, fmt.Errorf("failed to query product count: %v", err)
+	}
+
+	return &market, products, totalCount, nil
 }
 
 // UpdateProduct updates a product
-func (s *DBService) UpdateProduct(marketID, productID int, name string, price float64, discount float64, description string) error {
+func (s *DBService) UpdateProduct(marketID, productID int, name string, name_ru string, price float64, discount float64, description string, description_ru string) error {
 	// priceFloat, err := strconv.ParseFloat(price, 64)
 	// if err != nil {
 	// 	return fmt.Errorf("invalid price: %v", err)
@@ -252,18 +293,17 @@ func (s *DBService) UpdateProduct(marketID, productID int, name string, price fl
 
 	_, err = s.db.Exec(`
 		UPDATE products 
-		SET name = ?, price = ?, discount = ?, description = ?
-		WHERE id = ? AND market_id = ?`,
-		name, price, discount, description, productID, marketID)
+		SET name = ?, name_ru = ?, price = ?, discount = ?, description = ?,
+		description_ru = ? WHERE id = ? AND market_id = ?`,
+		name, name_ru, price, discount, description, description_ru, productID, marketID)
 	if err != nil {
 		return fmt.Errorf("failed to update product: %v", err)
 	}
 
 	return nil
 }
-
-// GetPaginatedProducts retrieves products with pagination, optional category, name search, and random selection
-func (s *DBService) GetPaginatedProducts(categoryID, duration, page, limit int, search string, random bool) ([]models.Product, error) {
+// GetPaginatedProducts retrieves products with pagination, optional filters, and sorting
+func (s *DBService) GetPaginatedProducts(categoryID, duration, page, limit int, search string, random bool, startPrice, endPrice float64, sort string, hasDiscount, isNew bool) ([]models.Product, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -279,6 +319,8 @@ func (s *DBService) GetPaginatedProducts(categoryID, duration, page, limit int, 
 			m.name as market_name, 
 			m.name_ru as market_name_ru, 
 			p.category_id, 
+			c.name as category_name,
+			c.name_ru as category_name_ru,
 			p.name, 
 			p.name_ru, 
 			p.price, 
@@ -298,6 +340,7 @@ func (s *DBService) GetPaginatedProducts(categoryID, duration, page, limit int, 
 				ELSE p.price 
 			END as final_price
 		FROM products p 
+		LEFT JOIN categories c ON p.category_id = c.id
 		LEFT JOIN markets m ON p.market_id = m.id 
 		LEFT JOIN favorites f ON p.id = f.product_id 
 		LEFT JOIN thumbnails t ON p.thumbnail_id = t.id 
@@ -315,10 +358,36 @@ func (s *DBService) GetPaginatedProducts(categoryID, duration, page, limit int, 
 		args = append(args, "%"+strings.ToLower(search)+"%")
 	}
 
+	if startPrice > 0 {
+		query += " AND (CASE WHEN p.discount IS NOT NULL AND p.discount > 0 THEN p.price - (p.price * p.discount / 100) ELSE p.price END) >= ?"
+		args = append(args, startPrice)
+	}
+
+	if endPrice > 0 {
+		query += " AND (CASE WHEN p.discount IS NOT NULL AND p.discount > 0 THEN p.price - (p.price * p.discount / 100) ELSE p.price END) <= ?"
+		args = append(args, endPrice)
+	}
+
+	if hasDiscount {
+		query += " AND p.discount IS NOT NULL AND p.discount > 0"
+	}
+
+	if isNew {
+		query += " AND DATEDIFF(CURDATE(), p.created_at) <= ?"
+		args = append(args, duration)
+	}
+
 	if random {
 		query += " ORDER BY RAND()"
 	} else {
-		query += " ORDER BY p.id"
+		switch sort {
+		case "cheap_to_expensive":
+			query += " ORDER BY (CASE WHEN p.discount IS NOT NULL AND p.discount > 0 THEN p.price - (p.price * p.discount / 100) ELSE p.price END) ASC"
+		case "expensive_to_cheap":
+			query += " ORDER BY (CASE WHEN p.discount IS NOT NULL AND p.discount > 0 THEN p.price - (p.price * p.discount / 100) ELSE p.price END) DESC"
+		default:
+			query += " ORDER BY p.id DESC"
+		}
 	}
 
 	query += " LIMIT ? OFFSET ?"
@@ -330,13 +399,15 @@ func (s *DBService) GetPaginatedProducts(categoryID, duration, page, limit int, 
 	}
 	defer rows.Close()
 
-	var products []models.Product
+	var products []models.Product = []models.Product{}
 	for rows.Next() {
 		var p models.Product
-		if err := rows.Scan(&p.ID, &p.MarketID, &p.MarketName, &p.MarketNameRu, &p.CategoryID, &p.Name, &p.NameRu, &p.Price, &p.Discount,
+		if err := rows.Scan(&p.ID, &p.MarketID, &p.MarketName, &p.MarketNameRu, &p.CategoryID, &p.CategoryName, &p.CategoryNameRu, &p.Name, &p.NameRu, &p.Price, &p.Discount,
 			&p.Description, &p.DescriptionRu, &p.CreatedAt, &p.IsFavorite, &p.ThumbnailURL, &p.IsNew, &p.FinalPrice); err != nil {
 			return nil, fmt.Errorf("failed to scan product: %v", err)
 		}
+
+		p.Thumbnails = []models.Thumbnail{}
 		products = append(products, p)
 	}
 
@@ -352,7 +423,9 @@ func (s *DBService) GetProduct(id string) (models.Product, error) {
 			p.market_id, 
 			m.name as market_name, 
 			m.name_ru as market_name_ru, 
-			p.category_id, 
+			p.category_id,
+			c.name as category_name,
+			c.name_ru as category_name_ru, 
 			p.name, 
 			p.name_ru, 
 			p.price, 
@@ -372,10 +445,11 @@ func (s *DBService) GetProduct(id string) (models.Product, error) {
 				ELSE p.price 
 			END as final_price
 		FROM products p 
+		LEFT JOIN categories c ON p.category_id = c.id 
 		LEFT JOIN markets m ON p.market_id = m.id 
 		LEFT JOIN favorites f ON p.id = f.product_id 
 		LEFT JOIN thumbnails t ON p.thumbnail_id = t.id 
-		WHERE p.id = ?`, 7, id).Scan(&p.ID, &p.MarketID, &p.MarketName, &p.MarketNameRu, &p.CategoryID, &p.Name, &p.NameRu, &p.Price, &p.Discount, &p.Description, &p.DescriptionRu, &p.CreatedAt, &p.IsFavorite, &p.ThumbnailURL, &p.IsNew, &p.FinalPrice)
+		WHERE p.id = ?`, 7, id).Scan(&p.ID, &p.MarketID, &p.MarketName, &p.MarketNameRu, &p.CategoryID, &p.CategoryName, &p.CategoryNameRu, &p.Name, &p.NameRu, &p.Price, &p.Discount, &p.Description, &p.DescriptionRu, &p.CreatedAt, &p.IsFavorite, &p.ThumbnailURL, &p.IsNew, &p.FinalPrice)
 	if err != nil {
 		return p, err
 	}
@@ -392,9 +466,9 @@ func (s *DBService) getProductDetails(productID int) ([]models.Thumbnail, error)
 	}
 	defer thumbRows.Close()
 
-	var thumbnails []models.Thumbnail
+	var thumbnails []models.Thumbnail = []models.Thumbnail{}
 	for thumbRows.Next() {
-		var sizes []models.Size
+		var sizes []models.Size = []models.Size{}
 		var t models.Thumbnail
 		if err := thumbRows.Scan(&t.ID, &t.ProductID, &t.Color, &t.ColorRu, &t.ImageURL); err != nil {
 			return nil, err
@@ -608,7 +682,7 @@ func (s *DBService) DeleteProduct(marketID, productID int) error {
 }
 
 // CreateMarket creates a market
-func (s *DBService) CreateMarket(name, name_ru, thumbnailURL, phone, password string, deliveryPrice float64) (string, string, error) {
+func (s *DBService) CreateMarket(name, name_ru, location, location_ru, thumbnailURL, phone, password string, deliveryPrice float64) (string, string, error) {
 	var exists bool
 	err := s.db.QueryRow("SELECT EXISTS(SELECT 1 FROM markets WHERE phone = ?)", phone).Scan(&exists)
 	if err != nil {
@@ -624,9 +698,9 @@ func (s *DBService) CreateMarket(name, name_ru, thumbnailURL, phone, password st
 	}
 
 	result, err := s.db.Exec(`
-		INSERT INTO markets (password, phone, name, name_ru, thumbnail_url, delivery_price)
-		VALUES (?, ?, ?, ?, ?, ?)`,
-		passwordHash, phone, name, name_ru, thumbnailURL, deliveryPrice)
+		INSERT INTO markets (password, phone, name, name_ru, location, location_ru, thumbnail_url, delivery_price)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		passwordHash, phone, name, name_ru, location, location_ru, thumbnailURL, deliveryPrice)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to create market: %v", err)
 	}
@@ -962,7 +1036,7 @@ func (s *DBService) GetAllThumbnailsWithProducts() ([]ThumbnailWithProduct, erro
 	}
 	defer rows.Close()
 
-	var thumbnails []ThumbnailWithProduct
+	var thumbnails []ThumbnailWithProduct = []ThumbnailWithProduct{}
 	for rows.Next() {
 		var t ThumbnailWithProduct
 		if err := rows.Scan(&t.ThumbnailID, &t.ProductID, &t.Color, &t.ImageURL,
@@ -1088,7 +1162,7 @@ func (s *DBService) GetUserFavoriteProducts(userID, page, limit int) ([]models.P
 		LEFT JOIN favorites f ON p.id = f.product_id 
 		LEFT JOIN thumbnails t ON p.thumbnail_id = t.id 
         WHERE f.user_id = ?
-        ORDER BY p.id LIMIT ? OFFSET ?`
+        ORDER BY p.id DESC LIMIT ? OFFSET ?`
 
     rows, err := s.db.Query(query, userID, limit, offset)
     if err != nil {
@@ -1096,7 +1170,7 @@ func (s *DBService) GetUserFavoriteProducts(userID, page, limit int) ([]models.P
     }
     defer rows.Close()
 
-    var products []models.Product
+    var products []models.Product = []models.Product{}
     for rows.Next() {
         var p models.Product
         var createdAtStr string // Changed to string
@@ -1248,7 +1322,7 @@ func (s *DBService) GetCategories(page, limit int, search string) ([]models.Cate
 		SELECT id, name, name_ru, thumbnail_url
 		FROM categories
 		WHERE name LIKE ?
-		ORDER BY id
+		ORDER BY id DESC
 		LIMIT ? OFFSET ?`
 	searchParam := "%" + search + "%"
 
@@ -1400,7 +1474,7 @@ func (s *DBService) GetUserCart(userID int) ([]models.CartMarket, error) {
 		JOIN thumbnails t ON c.thumbnail_id = t.id
 		JOIN sizes s ON c.size_id = s.id
 		WHERE c.user_id = ?
-		ORDER BY c.cart_order_id, m.id, p.id`
+		ORDER BY c.cart_order_id, m.id, p.id DESC`
 
 	rows, err := s.db.Query(query, userID)
 	if err != nil {
@@ -1471,7 +1545,7 @@ func (s *DBService) GetUserCart(userID int) ([]models.CartMarket, error) {
 	}
 
 	// Convert to final output
-	var cart []models.CartMarket
+	var cart []models.CartMarket = []models.CartMarket{}
 	for _, order := range cartOrders {
 		for _, market := range order.Markets {
 			cart = append(cart, *market)
@@ -1531,13 +1605,13 @@ func (s *DBService) GetUserLocations(userID int) ([]models.Location, error) {
         SELECT id, user_id, location_name, location_name_ru, location_address, location_address_ru
         FROM locations
         WHERE user_id = ?
-        ORDER BY id`, userID)
+        ORDER BY id DESC`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query locations: %v", err)
 	}
 	defer rows.Close()
 
-	var locations []models.Location
+	var locations []models.Location = []models.Location{}
 	for rows.Next() {
 		var loc models.Location
 		if err := rows.Scan(&loc.ID, &loc.UserID, &loc.LocationName, &loc.LocationNameRu,
@@ -1607,7 +1681,14 @@ func (s *DBService) CreateOrder(userID, cartOrderID, locationID int, name, phone
 // GetMarketAdminOrders retrieves orders for a market admin's market, optionally filtered by status
 func (s *DBService) GetMarketAdminOrders(marketID int, status string) ([]models.MarketAdminOrder, error) {
 	query := `
-		SELECT o.cart_order_id, l.location_address, l.location_address_ru, o.status, o.name, o.created_at,
+		SELECT 
+			o.id,
+			o.cart_order_id, 
+			l.location_address, 
+			l.location_address_ru, 
+			o.status,
+			o.name, 
+			o.created_at,
 			SUM(s.price * (1 - COALESCE(p.discount, 0)/100) * c.count) as sum
 		FROM orders o
 		JOIN carts c ON o.cart_order_id = c.cart_order_id
@@ -1632,10 +1713,10 @@ func (s *DBService) GetMarketAdminOrders(marketID int, status string) ([]models.
 	}
 	defer rows.Close()
 
-	var orders []models.MarketAdminOrder
+	var orders []models.MarketAdminOrder = []models.MarketAdminOrder{}
 	for rows.Next() {
 		var o models.MarketAdminOrder
-		if err := rows.Scan(&o.CartOrderID, &o.LocationAddress, &o.LocationAddressRu, &o.Status, &o.Name, &o.CreatedAt, &o.Sum); err != nil {
+		if err := rows.Scan(&o.ID, &o.CartOrderID, &o.LocationAddress, &o.LocationAddressRu, &o.Status, &o.Name, &o.CreatedAt, &o.Sum); err != nil {
 			return nil, fmt.Errorf("failed to scan order: %v", err)
 		}
 		o.Sum = math.Round(o.Sum*100) / 100 // Round to 2 decimal places
@@ -1648,9 +1729,10 @@ func (s *DBService) GetMarketAdminOrders(marketID int, status string) ([]models.
 // GetMarketAdminOrderByID retrieves a specific order by cart_order_id for a market admin
 func (s *DBService) GetMarketAdminOrderByID(marketID, cartOrderID int) (*models.MarketAdminOrderDetail, error) {
 	// Fetch order details
-	var order models.MarketAdminOrderDetail
+	var order models.MarketAdminOrderDetail = models.MarketAdminOrderDetail{}
 	err := s.db.QueryRow(`
 		SELECT 
+			o.id,
 			o.cart_order_id, 
 			o.name, 
 			o.phone,
@@ -1667,7 +1749,7 @@ func (s *DBService) GetMarketAdminOrderByID(marketID, cartOrderID int) (*models.
 		WHERE c.market_id = ? AND o.cart_order_id = ?
 		GROUP BY o.id`,
 		marketID, cartOrderID,
-	).Scan(&order.CartOrderID, &order.Name, &order.Phone, &order.Status, &order.LocationAddress, &order.LocationAddressRu, &order.CreatedAt, &order.Sum)
+	).Scan(&order.ID, &order.CartOrderID, &order.Name, &order.Phone, &order.Status, &order.LocationAddress, &order.LocationAddressRu, &order.CreatedAt, &order.Sum)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("order not found or not for this market")
 	}
@@ -1987,4 +2069,658 @@ func (s *DBService) UpdateUserProfile(userID int, req models.UpdateProfileReques
 	}
 
 	return profile, nil
+}
+
+
+
+func (s *DBService) GetMarketProfile(marketID int) (models.MarketProfile, error) {
+	var profile models.MarketProfile
+	err := s.db.QueryRow(`
+		SELECT id, COALESCE(phone, ''), delivery_price, COALESCE(name, ''), COALESCE(name_ru, ''),
+			COALESCE(location, ''), COALESCE(location_ru, ''), COALESCE(thumbnail_url, '')
+		FROM markets WHERE id = ?`, marketID).
+		Scan(&profile.ID, &profile.Phone, &profile.DeliveryPrice, &profile.Name, &profile.NameRu,
+			&profile.Location, &profile.LocationRu, &profile.ThumbnailURL)
+	if err == sql.ErrNoRows {
+		return models.MarketProfile{}, fmt.Errorf("market not found")
+	}
+	if err != nil {
+		return models.MarketProfile{}, fmt.Errorf("failed to fetch market profile: %v", err)
+	}
+	return profile, nil
+}
+
+
+// UpdateMarketProfile updates the profile data for a market
+func (s *DBService) UpdateMarketProfile(marketID int, req models.UpdateMarketProfileRequest, thumbnailURL string) (models.MarketProfile, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return models.MarketProfile{}, fmt.Errorf("failed to start transaction: %v", err)
+	}
+	defer tx.Rollback()
+
+	// Fetch current thumbnail_url
+	var oldThumbnailURL string
+	err = tx.QueryRow("SELECT COALESCE(thumbnail_url, '') FROM markets WHERE id = ?", marketID).Scan(&oldThumbnailURL)
+	if err == sql.ErrNoRows {
+		return models.MarketProfile{}, fmt.Errorf("market not found")
+	}
+	if err != nil {
+		return models.MarketProfile{}, fmt.Errorf("failed to fetch current thumbnail: %v", err)
+	}
+
+	// Build update query dynamically
+	query := "UPDATE markets SET "
+	var args []interface{}
+	var updates []string
+
+	if req.DeliveryPrice != 0 {
+		updates = append(updates, "delivery_price = ?")
+		args = append(args, req.DeliveryPrice)
+	}
+	if req.Name != "" {
+		updates = append(updates, "name = ?")
+		args = append(args, req.Name)
+	}
+	if req.NameRu != "" {
+		updates = append(updates, "name_ru = ?")
+		args = append(args, req.NameRu)
+	}
+	if req.Location != "" {
+		updates = append(updates, "location = ?")
+		args = append(args, req.Location)
+	}
+	if req.LocationRu != "" {
+		updates = append(updates, "location_ru = ?")
+		args = append(args, req.LocationRu)
+	}
+	if thumbnailURL != "" {
+		updates = append(updates, "thumbnail_url = ?")
+		args = append(args, thumbnailURL)
+	}
+
+	if len(updates) == 0 {
+		return models.MarketProfile{}, fmt.Errorf("no fields provided to update")
+	}
+
+	query += strings.Join(updates, ", ") + " WHERE id = ?"
+	args = append(args, marketID)
+
+	// Execute update
+	result, err := tx.Exec(query, args...)
+	if err != nil {
+		return models.MarketProfile{}, fmt.Errorf("failed to update market profile: %v", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return models.MarketProfile{}, fmt.Errorf("failed to check rows affected: %v", err)
+	}
+	if rowsAffected == 0 {
+		return models.MarketProfile{}, fmt.Errorf("market not found")
+	}
+
+	// Delete old thumbnail if new one is provided and old one exists
+	if thumbnailURL != "" && oldThumbnailURL != "" {
+		filePath := filepath.Join(".", oldThumbnailURL)
+		if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
+			return models.MarketProfile{}, fmt.Errorf("failed to delete old thumbnail: %v", err)
+		}
+	}
+
+	// Fetch updated profile
+	var profile models.MarketProfile
+	err = tx.QueryRow(`
+		SELECT id, COALESCE(phone, ''), delivery_price, COALESCE(name, ''), COALESCE(name_ru, ''),
+			COALESCE(location, ''), COALESCE(location_ru, ''), COALESCE(thumbnail_url, '')
+		FROM markets WHERE id = ?`, marketID).
+		Scan(&profile.ID, &profile.Phone, &profile.DeliveryPrice, &profile.Name, &profile.NameRu,
+			&profile.Location, &profile.LocationRu, &profile.ThumbnailURL)
+	if err == sql.ErrNoRows {
+		return models.MarketProfile{}, fmt.Errorf("market not found after update")
+	}
+	if err != nil {
+		return models.MarketProfile{}, fmt.Errorf("failed to fetch updated market profile: %v", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return models.MarketProfile{}, fmt.Errorf("failed to commit transaction: %v", err)
+	}
+
+	return profile, nil
+}
+
+
+// CreateBanner inserts a new banner into the banners table
+func (s *DBService) CreateBanner(req models.CreateBannerRequest, thumbnailURL string) (models.Banner, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return models.Banner{}, fmt.Errorf("failed to start transaction: %v", err)
+	}
+	defer tx.Rollback()
+
+	// Insert banner
+	result, err := tx.Exec("INSERT INTO banners (description, thumbnail_url) VALUES (?, ?)", req.Description, thumbnailURL)
+	if err != nil {
+		return models.Banner{}, fmt.Errorf("failed to insert banner: %v", err)
+	}
+
+	// Get inserted ID
+	id, err := result.LastInsertId()
+	if err != nil {
+		return models.Banner{}, fmt.Errorf("failed to get inserted banner ID: %v", err)
+	}
+
+	// Fetch created banner
+	var banner models.Banner
+	err = tx.QueryRow("SELECT id, COALESCE(description, ''), COALESCE(thumbnail_url, '') FROM banners WHERE id = ?", id).
+		Scan(&banner.ID, &banner.Description, &banner.ThumbnailURL)
+	if err != nil {
+		return models.Banner{}, fmt.Errorf("failed to fetch created banner: %v", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return models.Banner{}, fmt.Errorf("failed to commit transaction: %v", err)
+	}
+
+	return banner, nil
+}
+
+
+// DeleteBanner deletes a banner by ID and returns its thumbnail URL
+func (s *DBService) DeleteBanner(bannerID int) (string, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return "", fmt.Errorf("failed to start transaction: %v", err)
+	}
+	defer tx.Rollback()
+
+	// Fetch thumbnail_url
+	var thumbnailURL string
+	err = tx.QueryRow("SELECT COALESCE(thumbnail_url, '') FROM banners WHERE id = ?", bannerID).Scan(&thumbnailURL)
+	if err == sql.ErrNoRows {
+		return "", fmt.Errorf("banner not found")
+	}
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch banner: %v", err)
+	}
+
+	// Delete banner
+	result, err := tx.Exec("DELETE FROM banners WHERE id = ?", bannerID)
+	if err != nil {
+		return "", fmt.Errorf("failed to delete banner: %v", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return "", fmt.Errorf("failed to check rows affected: %v", err)
+	}
+	if rowsAffected == 0 {
+		return "", fmt.Errorf("banner not found")
+	}
+
+	if err := tx.Commit(); err != nil {
+		return "", fmt.Errorf("failed to commit transaction: %v", err)
+	}
+
+	return thumbnailURL, nil
+}
+
+
+// GetAllBanners retrieves all banners from the banners table
+func (s *DBService) GetAllBanners() ([]models.Banner, error) {
+	query := "SELECT id, COALESCE(description, ''), COALESCE(thumbnail_url, '') FROM banners ORDER BY id DESC"
+	rows, err := s.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query banners: %v", err)
+	}
+	defer rows.Close()
+
+	var banners []models.Banner = []models.Banner{}
+	for rows.Next() {
+		var banner models.Banner
+		if err := rows.Scan(&banner.ID, &banner.Description, &banner.ThumbnailURL); err != nil {
+			return nil, fmt.Errorf("failed to scan banner: %v", err)
+		}
+		banners = append(banners, banner)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating banners: %v", err)
+	}
+
+	return banners, nil
+}
+
+
+
+// UpdateOrderStatus updates the status of an order
+func (s *DBService) UpdateOrderStatus(orderID, marketID int, status string) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to start transaction: %v", err)
+	}
+	defer tx.Rollback()
+
+	// Validate status
+	if status != "canceled" && status != "delivered" {
+		return fmt.Errorf("invalid status; must be 'canceled' or 'delivered'")
+	}
+
+	// Verify order exists and is associated with the market
+	var exists bool
+	err = tx.QueryRow(`
+		SELECT EXISTS (
+			SELECT 1 
+			FROM orders o 
+			JOIN carts c ON o.cart_order_id = c.cart_order_id 
+			WHERE o.id = ? AND c.market_id = ?
+		)`, orderID, marketID).Scan(&exists)
+	if err != nil {
+		return fmt.Errorf("failed to verify order: %v", err)
+	}
+	if !exists {
+		return fmt.Errorf("order not found or not associated with this market")
+	}
+
+	// Update order status
+	result, err := tx.Exec("UPDATE orders SET status = ? WHERE id = ?", status, orderID)
+	if err != nil {
+		return fmt.Errorf("failed to update order status: %v", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check rows affected: %v", err)
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("order not found")
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %v", err)
+	}
+
+	return nil
+}
+
+
+
+// GetMarketAdminOrders retrieves orders for a market admin's market, optionally filtered by status
+func (s *DBService) GetUserOrders(UserID int, status string) ([]models.UserOrder, error) {
+	query := `
+		SELECT 
+			o.id,
+			o.cart_order_id,
+			o.status,
+			o.created_at,
+			m.name as market_name,
+			m.name_ru as market_name_ru,
+			p.name,
+			p.name_ru,
+			s.size,
+			t.color,
+			t.color_ru,
+			t.image_url,
+			COALESCE(th.image_url, '') as product_image_url,
+			SUM(s.price * (1 - COALESCE(p.discount, 0)/100) * c.count + m.delivery_price) as sum
+		FROM orders o
+		JOIN carts c ON o.cart_order_id = c.cart_order_id
+		JOIN markets m ON c.market_id = m.id
+		JOIN sizes s ON c.size_id = s.id
+		JOIN products p ON c.product_id = p.id
+		JOIN thumbnails t ON t.id = c.thumbnail_id
+		JOIN thumbnails th ON th.id = p.thumbnail_id
+		WHERE c.user_id = ?`
+	args := []interface{}{UserID}
+
+	if status != "" {
+		query += ` AND o.status = ?`
+		args = append(args, status)
+	}
+
+	query += `
+		GROUP BY o.id
+		ORDER BY o.created_at DESC`
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query orders: %v", err)
+	}
+	defer rows.Close()
+
+	var orders []models.UserOrder = []models.UserOrder{}
+	for rows.Next() {
+		var o models.UserOrder
+		if err := rows.Scan(&o.ID, &o.CartOrderID, &o.Status, &o.CreatedAt, &o.MarketName, &o.MarketNameRu, &o.ProductName, &o.ProductNameRu, &o.Size, &o.Color, &o.ColorRu, &o.ImageURL, &o.ProductImageURL, &o.Sum); err != nil {
+			return nil, fmt.Errorf("failed to scan order: %v", err)
+		}
+		o.Sum = math.Round(o.Sum*100) / 100 // Round to 2 decimal places
+		orders = append(orders, o)
+	}
+
+	return orders, nil
+}
+
+
+// CreateMessage inserts a new message into the user_messages table
+func (s *DBService) CreateMessage(userID int, req models.CreateMessageRequest) (int, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("failed to start transaction: %v", err)
+	}
+	defer tx.Rollback()
+
+	// Insert message
+	result, err := tx.Exec(
+		"INSERT INTO user_messages (user_id, full_name, phone, message) VALUES (?, ?, ?, ?)",
+		userID, req.FullName, req.Phone, req.Message,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("failed to insert message: %v", err)
+	}
+
+	// Get inserted ID
+	id, err := result.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get inserted message ID: %v", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("failed to commit transaction: %v", err)
+	}
+
+	return int(id), nil
+}
+
+
+// UpdateSize updates a size entry
+func (s *DBService) UpdateSize(sizeID int, req models.UpdateSizeRequest) (models.SizeUpdate, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return models.SizeUpdate{}, fmt.Errorf("failed to start transaction: %v", err)
+	}
+	defer tx.Rollback()
+
+	// Update size
+	result, err := tx.Exec(
+		"UPDATE sizes SET count = ?, price = ?, size = ? WHERE id = ?",
+		req.Count, req.Price, req.Size, sizeID, 
+	)
+	if err != nil {
+		return models.SizeUpdate{}, fmt.Errorf("failed to update size: %v", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return models.SizeUpdate{}, fmt.Errorf("failed to check rows affected: %v", err)
+	}
+	if rowsAffected == 0 {
+		return models.SizeUpdate{}, fmt.Errorf("size not found or not associated with this market")
+	}
+
+	// Fetch updated size
+	var size models.SizeUpdate
+	err = tx.QueryRow("SELECT id, count, price, COALESCE(size, '') FROM sizes WHERE id = ?", sizeID).
+		Scan(&size.ID, &size.Count, &size.Price, &size.Size)
+	if err == sql.ErrNoRows {
+		return models.SizeUpdate{}, fmt.Errorf("size not found after update")
+	}
+	if err != nil {
+		return models.SizeUpdate{}, fmt.Errorf("failed to fetch updated size: %v", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return models.SizeUpdate{}, fmt.Errorf("failed to commit transaction: %v", err)
+	}
+
+	return size, nil
+}
+
+
+// UpdateThumbnail updates a thumbnail entry and returns the old image URL
+func (s *DBService) UpdateThumbnail(thumbnailID int, color, color_ru string, marketID int, files []*multipart.FileHeader) (string, string, string, error) {
+	var productID int
+	var filePath string
+	var imageCreated string
+	err := s.db.QueryRow("SELECT product_id FROM thumbnails WHERE id = ?", thumbnailID).Scan(&productID)
+	if err == sql.ErrNoRows {
+		return "", "", "", fmt.Errorf("thumbnail not found: %v", err)
+	}
+	if err != nil {
+		return "", "", "", fmt.Errorf("failed to fetch product ID: %v", err)
+	} 
+
+	// Create uploads directory
+	uploadsDir := filepath.Join("uploads/products", fmt.Sprintf("%d", productID))
+	if err := os.MkdirAll(uploadsDir, 0755); err != nil {
+		return "", "", "", fmt.Errorf("error creating directory: %v", err)
+	}
+
+	// Handle file upload
+	fileHeader := files[0]
+	file, err := fileHeader.Open()
+	if err != nil {
+		return "", "", "", fmt.Errorf("error opening file: %v", err)
+	}
+	defer file.Close()
+
+	filename := fmt.Sprintf("%d-%s", time.Now().UnixNano(), fileHeader.Filename)
+	filePath = filepath.Join(uploadsDir, filename)
+	out, err := os.Create(filePath)
+	if err != nil {
+		return "", "", "", fmt.Errorf("error saving file: %v", err)
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, file)
+	if err != nil {
+		return "", "", "", fmt.Errorf("error copying file: %v", err)
+	}
+	imageCreated = "created"
+
+	// Construct image URL
+	imageURL := filepath.Join("/uploads/products", fmt.Sprintf("%d", productID), filename)
+	imageURL = strings.ReplaceAll(imageURL, string(filepath.Separator), "/")
+
+	// Update thumbnail in database
+	thumb := ThumbnailData{
+		ProductID: productID,
+		Color:     color,
+		ColorRu:   color_ru,
+		ImageURL:  imageURL,
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return "", "", "", fmt.Errorf("failed to start transaction: %v", err)
+	}
+	defer tx.Rollback()
+
+	// Fetch old image URL and verify market ownership
+	var oldImageURL string
+	err = tx.QueryRow(`
+		SELECT t.image_url 
+		FROM thumbnails t
+		JOIN products p ON t.product_id = p.id
+		WHERE t.id = ? AND p.market_id = ?
+	`, thumbnailID, marketID).Scan(&oldImageURL)
+	if err == sql.ErrNoRows {
+		return "", "", "", fmt.Errorf("thumbnail not found or not associated with this market")
+	}
+	if err != nil {
+		return "", "", "", fmt.Errorf("failed to fetch thumbnail: %v", err)
+	}
+
+	// Update thumbnail
+	result, err := tx.Exec(
+		"UPDATE thumbnails SET color = ?, color_ru = ?, image_url = ? WHERE id = ?",
+		thumb.Color, thumb.ColorRu, thumb.ImageURL, thumbnailID,
+	)
+	if err != nil {
+		return "", "", "", fmt.Errorf("failed to update thumbnail: %v", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return "", "", "", fmt.Errorf("failed to check rows affected: %v", err)
+	}
+	if rowsAffected == 0 {
+		return "", "", "", fmt.Errorf("thumbnail not found")
+	}
+
+	if err := tx.Commit(); err != nil {
+		return "", "", "", fmt.Errorf("failed to commit transaction: %v", err)
+	}
+
+
+	return oldImageURL, filePath, imageCreated, nil
+}
+
+
+// GetAllUserMessages retrieves all user messages
+func (s *DBService) GetAllUserMessages() ([]models.UserMessage, error) {
+	query := `
+		SELECT 
+			id, 
+			user_id, 
+			COALESCE(full_name, ''), 
+			COALESCE(phone, ''),
+			COALESCE(message, '')
+		FROM user_messages
+	`
+	rows, err := s.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query user messages: %v", err)
+	}
+	defer rows.Close()
+
+	var messages []models.UserMessage = []models.UserMessage{}
+	for rows.Next() {
+		var msg models.UserMessage
+		if err := rows.Scan(&msg.ID, &msg.UserID, &msg.FullName, &msg.Phone, &msg.Message); err != nil {
+			return nil, fmt.Errorf("failed to scan user message: %v", err)
+		}
+		messages = append(messages, msg)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating user messages: %v", err)
+	}
+
+	return messages, nil
+}
+
+
+// DeleteUserMessage deletes a user message by ID
+func (s *DBService) DeleteUserMessage(id int) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to start transaction: %v", err)
+	}
+	defer tx.Rollback()
+
+	result, err := tx.Exec("DELETE FROM user_messages WHERE id = ?", id)
+	if err != nil {
+		return fmt.Errorf("failed to delete user message: %v", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check rows affected: %v", err)
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("message not found")
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %v", err)
+	}
+
+	return nil
+}
+
+
+
+// CreateMarketMessage inserts a new message into the market_messages table
+func (s *DBService) CreateMarketMessage(marketID int, req models.CreateMarketMessageRequest) (int, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("failed to start transaction: %v", err)
+	}
+	defer tx.Rollback()
+
+	result, err := tx.Exec(
+		"INSERT INTO market_messages (market_id, full_name, phone, message) VALUES (?, ?, ?, ?)",
+		marketID, req.FullName, req.Phone, req.Message,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("failed to insert market message: %v", err)
+	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get inserted message ID: %v", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("failed to commit transaction: %v", err)
+	}
+
+	return int(id), nil
+}
+
+// GetAllMarketMessages retrieves all market messages
+func (s *DBService) GetAllMarketMessages() ([]models.MarketMessage, error) {
+	query := `
+		SELECT id, market_id, COALESCE(full_name, ''), COALESCE(phone, ''), COALESCE(message, '')
+		FROM market_messages
+	`
+	rows, err := s.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query market messages: %v", err)
+	}
+	defer rows.Close()
+
+	var messages []models.MarketMessage = []models.MarketMessage{}
+	for rows.Next() {
+		var msg models.MarketMessage
+		if err := rows.Scan(&msg.ID, &msg.MarketID, &msg.FullName, &msg.Phone, &msg.Message); err != nil {
+			return nil, fmt.Errorf("failed to scan market message: %v", err)
+		}
+		messages = append(messages, msg)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating market messages: %v", err)
+	}
+
+	return messages, nil
+}
+
+// DeleteMarketMessage deletes a market message by ID
+func (s *DBService) DeleteMarketMessage(id int) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to start transaction: %v", err)
+	}
+	defer tx.Rollback()
+
+	result, err := tx.Exec("DELETE FROM market_messages WHERE id = ?", id)
+	if err != nil {
+		return fmt.Errorf("failed to delete market message: %v", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check rows affected: %v", err)
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("message not found")
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %v", err)
+	}
+
+	return nil
 }
