@@ -131,7 +131,7 @@ func (h *Handler) createProduct(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create product
-	productID, err := h.db.CreateProduct(claims.MarketID, req.CategoryID, req.Name, req.NameRu,
+	productID, err := h.db.CreateProduct(r.Context(), claims.MarketID, req.CategoryID, req.Name, req.NameRu,
 		req.Price, req.Discount, req.Description, req.DescriptionRu, req.IsActive, urlPath,
 		filePath, filename)
 

@@ -55,7 +55,7 @@ func (h *Handler) updateProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.db.UpdateProduct(claims.MarketID, productID, req.Name, req.NameRu, req.Price, req.Discount, req.Description, req.DescriptionRu)
+	err = h.db.UpdateProduct(r.Context(), claims.MarketID, productID, req.Name, req.NameRu, req.Price, req.Discount, req.Description, req.DescriptionRu)
 	if err != nil {
 		if err.Error() == "product not found or unauthorized" {
 			respondError(w, http.StatusNotFound, err.Error())

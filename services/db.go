@@ -268,7 +268,7 @@ func (s *DBService) GetMarketProducts(ctx context.Context, marketID, page, limit
 		log.Printf("Failed to marshal products: %v", err)
 	} else {
 		pipe := s.redis.Pipeline()
-		pipe.Set(ctx, cacheKey, productsJSON, 10*time.Minute)
+		pipe.Set(ctx, cacheKey, productsJSON, 5*time.Minute)
 		pipe.SAdd(ctx, fmt.Sprintf("market:%d:products_cache_keys", marketID), cacheKey)
 		if _, err := pipe.Exec(ctx); err != nil {
 			log.Printf("Failed to set cache: %v", err)
@@ -306,61 +306,71 @@ func (s *DBService) GetMarketByID(ctx context.Context, marketID, page, limit int
 
 	return &market, products, totalCount, nil
 }
-
 // UpdateProduct updates a product and invalidates cache
-func (s *DBService) UpdateProduct(marketID, productID int, name, name_ru string, price, discount float64, description, description_ru string) error {
-	// Verify product exists and belongs to market
-	var exists bool
-	err := s.db.QueryRow("SELECT EXISTS(SELECT 1 FROM products WHERE id = ? AND market_id = ?)", productID, marketID).Scan(&exists)
-	if err != nil {
-		return fmt.Errorf("failed to validate product: %v", err)
-	}
-	if !exists {
-		return fmt.Errorf("product not found or unauthorized")
-	}
+func (s *DBService) UpdateProduct(ctx context.Context, marketID, productID int, name, name_ru string, price, discount float64, description, description_ru string) error {
+    // Verify product exists and belongs to market
+    var exists bool
+    err := s.db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM products WHERE id = ? AND market_id = ?)", productID, marketID).Scan(&exists)
+    if err != nil {
+        return fmt.Errorf("failed to validate product: %v", err)
+    }
+    if !exists {
+        return fmt.Errorf("product not found or unauthorized")
+    }
 
-	// Update product
-	_, err = s.db.Exec(`
-		UPDATE products 
-		SET name = ?, name_ru = ?, price = ?, discount = ?, description = ?, description_ru = ?
-		WHERE id = ? AND market_id = ?`,
-		name, name_ru, price, discount, description, description_ru, productID, marketID)
-	if err != nil {
-		return fmt.Errorf("failed to update product: %v", err)
-	}
+    // Update product
+    _, err = s.db.ExecContext(ctx, `
+        UPDATE products 
+        SET name = ?, name_ru = ?, price = ?, discount = ?, description = ?, description_ru = ?
+        WHERE id = ? AND market_id = ?`,
+        name, name_ru, price, discount, description, description_ru, productID, marketID)
+    if err != nil {
+        return fmt.Errorf("failed to update product: %v", err)
+    }
 
-	// Invalidate market-specific product caches
-	marketKeys, err := s.redis.SMembers(context.Background(), fmt.Sprintf("market:%d:products_cache_keys", marketID)).Result()
-	if err == nil && len(marketKeys) > 0 {
-		s.redis.Del(context.Background(), marketKeys...)
-	} else if err != nil && err != redis.Nil {
-		fmt.Printf("Failed to invalidate market cache: %v\n", err)
-	}
+    // Invalidate caches using pipeline
+    pipe := s.redis.Pipeline()
+    marketKeys, err := s.redis.SMembers(ctx, fmt.Sprintf("market:%d:products_cache_keys", marketID)).Result()
+    if err == nil && len(marketKeys) > 0 {
+        pipe.Del(ctx, marketKeys...)
+    } else if err != nil && err != redis.Nil {
+        log.Printf("Failed to fetch market cache keys: %v", err)
+    }
 
-	// Invalidate global product caches
-	globalKeys, err := s.redis.SMembers(context.Background(), "global_products_cache_keys").Result()
-	if err == nil && len(globalKeys) > 0 {
-		s.redis.Del(context.Background(), globalKeys...)
-	} else if err != nil && err != redis.Nil {
-		fmt.Printf("Failed to invalidate global cache: %v\n", err)
-	}
+    globalKeys, err := s.redis.SMembers(ctx, "global_products_cache_keys").Result()
+    if err == nil && len(globalKeys) > 0 {
+        pipe.Del(ctx, globalKeys...)
+    } else if err != nil && err != redis.Nil {
+        log.Printf("Failed to fetch global cache keys: %v", err)
+    }
 
-	return nil
+    if _, err := pipe.Exec(ctx); err != nil {
+        log.Printf("Failed to invalidate caches: %v", err)
+    }
+
+    return nil
 }
+
 // GetPaginatedProducts retrieves products with pagination, optional filters, and sorting with caching
 func (s *DBService) GetPaginatedProducts(ctx context.Context, categoryID, duration, page, limit int, search string, random bool, startPrice, endPrice float64, sort string, hasDiscount, isNew bool) ([]models.Product, error) {
-	cacheKey := fmt.Sprintf("products:cat:%d:dur:%d:page:%d:limit:%d:search:%s:random:%t:start:%.2f:end:%.2f:sort:%s:discount:%t:new:%t",
-		categoryID, duration, page, limit, search, random, startPrice, endPrice, sort, hasDiscount, isNew)
+	// Generate cache key (exclude duration, search, startPrice, endPrice)
+	cacheKey := fmt.Sprintf("products:cat:%d:page:%d:limit:%d:random:%t:sort:%s:discount:%t:new:%t",
+		categoryID, page, limit, random, sort, hasDiscount, isNew)
 
-	cached, err := s.redis.Get(ctx, cacheKey).Result()
-	if err == nil {
-		var products []models.Product
-		if err := json.Unmarshal([]byte(cached), &products); err == nil {
-			return products, nil
+	// Check cache only if no search, no price filters, and default duration (7 days)
+	defaultDuration := 7
+	shouldCache := search == "" && startPrice == 0 && endPrice == 0 && duration == defaultDuration
+	if shouldCache {
+		cached, err := s.redis.Get(ctx, cacheKey).Result()
+		if err == nil {
+			var products []models.Product
+			if err := json.Unmarshal([]byte(cached), &products); err == nil {
+				return products, nil
+			}
+			log.Printf("Failed to unmarshal cached products: %v", err)
+		} else if err != redis.Nil {
+			log.Printf("Redis get error: %v", err)
 		}
-		log.Printf("Failed to unmarshal cached products: %v", err)
-	} else if err != redis.Nil {
-		log.Printf("Redis get error: %v", err)
 	}
 
 	// Pagination setup
@@ -371,6 +381,12 @@ func (s *DBService) GetPaginatedProducts(ctx context.Context, categoryID, durati
 		limit = 10
 	}
 	offset := (page - 1) * limit
+
+	// Use default duration for caching, otherwise use provided duration
+	queryDuration := defaultDuration
+	if !shouldCache {
+		queryDuration = duration
+	}
 
 	// Build SQL query
 	query := `
@@ -406,16 +422,16 @@ func (s *DBService) GetPaginatedProducts(ctx context.Context, categoryID, durati
         LEFT JOIN favorites f ON p.id = f.product_id 
         LEFT JOIN thumbnails t ON p.thumbnail_id = t.id 
         WHERE p.is_active = true`
-	args := []interface{}{duration}
+	args := []interface{}{queryDuration}
 
 	if categoryID != 0 {
 		query += " AND p.category_id = ?"
 		args = append(args, categoryID)
 	}
 	if search != "" {
-		query += " AND LOWER(p.name) LIKE ?"
-		args = append(args, "%"+strings.ToLower(search)+"%")
-	}
+    query += " AND (name_lower LIKE ? OR name_ru_lower LIKE ?)"
+    args = append(args, "%"+strings.ToLower(search)+"%", "%"+strings.ToLower(search)+"%")
+}
 	if startPrice > 0 {
 		query += " AND (CASE WHEN p.discount IS NOT NULL AND p.discount > 0 THEN p.price - (p.price * p.discount / 100) ELSE p.price END) >= ?"
 		args = append(args, startPrice)
@@ -429,7 +445,7 @@ func (s *DBService) GetPaginatedProducts(ctx context.Context, categoryID, durati
 	}
 	if isNew {
 		query += " AND DATEDIFF(CURDATE(), p.created_at) <= ?"
-		args = append(args, duration)
+		args = append(args, queryDuration)
 	}
 	if random {
 		query += " ORDER BY RAND()"
@@ -464,15 +480,18 @@ func (s *DBService) GetPaginatedProducts(ctx context.Context, categoryID, durati
 		products = append(products, p)
 	}
 
-	productsJSON, err := json.Marshal(products)
-	if err != nil {
-		log.Printf("Failed to marshal products: %v", err)
-	} else {
-		pipe := s.redis.Pipeline()
-		pipe.Set(ctx, cacheKey, productsJSON, 10*time.Minute)
-		pipe.SAdd(ctx, "global_products_cache_keys", cacheKey)
-		if _, err := pipe.Exec(ctx); err != nil {
-			log.Printf("Failed to set cache: %v", err)
+	// Cache the result only if shouldCache is true
+	if shouldCache && len(products) > 0 {
+		productsJSON, err := json.Marshal(products)
+		if err != nil {
+			log.Printf("Failed to marshal products: %v", err)
+		} else {
+			pipe := s.redis.Pipeline()
+			pipe.Set(ctx, cacheKey, productsJSON, 5*time.Minute)
+			pipe.SAdd(ctx, "global_products_cache_keys", cacheKey)
+			if _, err := pipe.Exec(ctx); err != nil {
+				log.Printf("Failed to set cache: %v", err)
+			}
 		}
 	}
 
@@ -558,102 +577,103 @@ func (s *DBService) getProductDetails(productID int) ([]models.Thumbnail, error)
 }
 
 // CreateProduct creates a new product and invalidates cache
-func (s *DBService) CreateProduct(marketID, categoryID int, name, name_ru string, price, discount float64, description, description_ru string, is_active bool, urlPath, filePath, filename string) (int, error) {
-	// Verify market exists
-	var exists bool
-	err := s.db.QueryRow("SELECT EXISTS(SELECT 1 FROM markets WHERE id = ?)", marketID).Scan(&exists)
-	if err != nil {
-		return 0, fmt.Errorf("failed to validate market: %v", err)
-	}
-	if !exists {
-		return 0, fmt.Errorf("market not found")
-	}
+func (s *DBService) CreateProduct(ctx context.Context, marketID, categoryID int, name, name_ru string, price, discount float64, description, description_ru string, is_active bool, urlPath, filePath, filename string) (int, error) {
+    // Verify market exists
+    var exists bool
+    err := s.db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM markets WHERE id = ?)", marketID).Scan(&exists)
+    if err != nil {
+        return 0, fmt.Errorf("failed to validate market: %v", err)
+    }
+    if !exists {
+        return 0, fmt.Errorf("market not found")
+    }
 
-	// Verify category exists
-	err = s.db.QueryRow("SELECT EXISTS(SELECT 1 FROM categories WHERE id = ?)", categoryID).Scan(&exists)
-	if err != nil {
-		return 0, fmt.Errorf("failed to validate category: %v", err)
-	}
-	if !exists {
-		return 0, fmt.Errorf("category not found")
-	}
+    // Verify category exists
+    err = s.db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM categories WHERE id = ?)", categoryID).Scan(&exists)
+    if err != nil {
+        return 0, fmt.Errorf("failed to validate category: %v", err)
+    }
+    if !exists {
+        return 0, fmt.Errorf("category not found")
+    }
 
-	// Begin transaction
-	tx, err := s.db.Begin()
-	if err != nil {
-		return 0, fmt.Errorf("failed to start transaction: %v", err)
-	}
-	defer tx.Rollback()
+    // Begin transaction
+    tx, err := s.db.BeginTx(ctx, nil)
+    if err != nil {
+        return 0, fmt.Errorf("failed to start transaction: %v", err)
+    }
+    defer tx.Rollback()
 
-	// Insert into thumbnails table
-	result, err := tx.Exec("INSERT INTO thumbnails (image_url) VALUES (?)", urlPath)
-	if err != nil {
-		os.Remove(filePath) // Clean up file on error
-		return 0, fmt.Errorf("failed to save thumbnail URL: %v", err)
-	}
-	thumbnailID64, err := result.LastInsertId()
-	if err != nil {
-		os.Remove(filePath) // Clean up file on error
-		return 0, fmt.Errorf("failed to retrieve thumbnail ID: %v", err)
-	}
-	thumbnailID := int(thumbnailID64)
+    // Insert into thumbnails table
+    result, err := tx.ExecContext(ctx, "INSERT INTO thumbnails (image_url) VALUES (?)", urlPath)
+    if err != nil {
+        os.Remove(filePath) // Clean up file on error
+        return 0, fmt.Errorf("failed to save thumbnail URL: %v", err)
+    }
+    thumbnailID64, err := result.LastInsertId()
+    if err != nil {
+        os.Remove(filePath)
+        return 0, fmt.Errorf("failed to retrieve thumbnail ID: %v", err)
+    }
+    thumbnailID := int(thumbnailID64)
 
-	// Verify thumbnail_id
-	if thumbnailID != 0 {
-		err = tx.QueryRow("SELECT EXISTS(SELECT 1 FROM thumbnails WHERE id = ?)", thumbnailID).Scan(&exists)
-		if err != nil {
-			os.Remove(filePath)
-			return 0, fmt.Errorf("failed to validate thumbnail: %v", err)
-		}
-		if !exists {
-			os.Remove(filePath)
-			return 0, fmt.Errorf("thumbnail not found")
-		}
-	}
+    // Verify thumbnail_id
+    if thumbnailID != 0 {
+        err = tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM thumbnails WHERE id = ?)", thumbnailID).Scan(&exists)
+        if err != nil {
+            os.Remove(filePath)
+            return 0, fmt.Errorf("failed to validate thumbnail: %v", err)
+        }
+        if !exists {
+            os.Remove(filePath)
+            return 0, fmt.Errorf("thumbnail not found")
+        }
+    }
 
-	// Insert product
-	result, err = tx.Exec(`
+    // Insert product
+    result, err = tx.ExecContext(ctx, `
         INSERT INTO products (market_id, category_id, name, name_ru, price, discount, description, description_ru, is_active, thumbnail_id)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		marketID, categoryID, name, name_ru, price, discount, description, description_ru, is_active, thumbnailID)
-	if err != nil {
-		if thumbnailID != 0 {
-			tx.Exec("DELETE FROM thumbnails WHERE id = ?", thumbnailID)
-			os.Remove(filepath.Join("Uploads", "products", "main", filename))
-		}
-		if err.Error() == "market not found" || err.Error() == "category not found" {
-			return 0, fmt.Errorf("couldnt find market or category: %v", err)
-		}
-		return 0, fmt.Errorf("failed to create product: %v", err)
-	}
+        marketID, categoryID, name, name_ru, price, discount, description, description_ru, is_active, thumbnailID)
+    if err != nil {
+        if thumbnailID != 0 {
+            tx.ExecContext(ctx, "DELETE FROM thumbnails WHERE id = ?", thumbnailID)
+            os.Remove(filepath.Join("Uploads", "products", "main", filename))
+        }
+        return 0, fmt.Errorf("failed to create product: %v", err)
+    }
 
-	productID, err := result.LastInsertId()
-	if err != nil {
-		return 0, fmt.Errorf("failed to retrieve product ID: %v", err)
-	}
+    productID, err := result.LastInsertId()
+    if err != nil {
+        return 0, fmt.Errorf("failed to retrieve product ID: %v", err)
+    }
 
-	// Commit transaction
-	if err := tx.Commit(); err != nil {
-		return 0, fmt.Errorf("failed to commit transaction: %v", err)
-	}
+    // Commit transaction
+    if err := tx.Commit(); err != nil {
+        return 0, fmt.Errorf("failed to commit transaction: %v", err)
+    }
 
-	// Invalidate market-specific product caches
-	marketKeys, err := s.redis.SMembers(context.Background(), fmt.Sprintf("market:%d:products_cache_keys", marketID)).Result()
-	if err == nil && len(marketKeys) > 0 {
-		s.redis.Del(context.Background(), marketKeys...)
-	} else if err != nil && err != redis.Nil {
-		fmt.Printf("Failed to invalidate market cache: %v\n", err)
-	}
+    // Invalidate caches using pipeline
+    pipe := s.redis.Pipeline()
+    marketKeys, err := s.redis.SMembers(ctx, fmt.Sprintf("market:%d:products_cache_keys", marketID)).Result()
+    if err == nil && len(marketKeys) > 0 {
+        pipe.Del(ctx, marketKeys...)
+    } else if err != nil && err != redis.Nil {
+        log.Printf("Failed to fetch market cache keys: %v", err)
+    }
 
-	// Invalidate global product caches
-	globalKeys, err := s.redis.SMembers(context.Background(), "global_products_cache_keys").Result()
-	if err == nil && len(globalKeys) > 0 {
-		s.redis.Del(context.Background(), globalKeys...)
-	} else if err != nil && err != redis.Nil {
-		fmt.Printf("Failed to invalidate global cache: %v\n", err)
-	}
+    globalKeys, err := s.redis.SMembers(ctx, "global_products_cache_keys").Result()
+    if err == nil && len(globalKeys) > 0 {
+        pipe.Del(ctx, globalKeys...)
+    } else if err != nil && err != redis.Nil {
+        log.Printf("Failed to fetch global cache keys: %v", err)
+    }
 
-	return int(productID), nil
+    if _, err := pipe.Exec(ctx); err != nil {
+        log.Printf("Failed to invalidate caches: %v", err)
+    }
+
+    return int(productID), nil
 }
 
 // UpdateMarketThumbnail updates the thumbnail for a market
@@ -680,116 +700,119 @@ func (s *DBService) GetProductThumbnails(productID string) ([]models.Thumbnail, 
 	}
 	return thumbnails, nil
 }
-
 // DeleteProduct deletes a product and its thumbnails and invalidates cache
-func (s *DBService) DeleteProduct(marketID, productID int) error {
-	// Begin transaction
-	tx, err := s.db.Begin()
-	if err != nil {
-		return fmt.Errorf("failed to start transaction: %v", err)
-	}
-	defer tx.Rollback()
+func (s *DBService) DeleteProduct(ctx context.Context, marketID, productID int) error {
+    // Begin transaction
+    tx, err := s.db.BeginTx(ctx, nil)
+    if err != nil {
+        return fmt.Errorf("failed to start transaction: %v", err)
+    }
+    defer tx.Rollback()
 
-	// Verify product exists and belongs to market, fetch thumbnail_id
-	var exists bool
-	var thumbnailID int
-	err = tx.QueryRow("SELECT EXISTS(SELECT 1 FROM products WHERE id = ? AND market_id = ?), COALESCE(thumbnail_id, 0) FROM products WHERE id = ? AND market_id = ?",
-		productID, marketID, productID, marketID).Scan(&exists, &thumbnailID)
-	if err != nil {
-		return fmt.Errorf("failed to validate product: %v", err)
-	}
-	if !exists {
-		return fmt.Errorf("product not found or unauthorized")
-	}
+    // Verify product exists and belongs to market, fetch thumbnail_id
+    var exists bool
+    var thumbnailID int
+    err = tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM products WHERE id = ? AND market_id = ?), COALESCE(thumbnail_id, 0) FROM products WHERE id = ? AND market_id = ?",
+        productID, marketID, productID, marketID).Scan(&exists, &thumbnailID)
+    if err != nil {
+        return fmt.Errorf("failed to validate product: %v", err)
+    }
+    if !exists {
+        return fmt.Errorf("product not found or unauthorized")
+    }
 
-	// Fetch legacy thumbnails (linked via product_id)
-	rows, err := tx.Query("SELECT image_url FROM thumbnails WHERE product_id = ?", productID)
-	if err != nil {
-		return fmt.Errorf("failed to query thumbnails: %v", err)
-	}
-	defer rows.Close()
+    // Fetch legacy thumbnails (linked via product_id)
+    rows, err := tx.QueryContext(ctx, "SELECT image_url FROM thumbnails WHERE product_id = ?", productID)
+    if err != nil {
+        return fmt.Errorf("failed to query thumbnails: %v", err)
+    }
+    defer rows.Close()
 
-	var imageURLs []string
-	for rows.Next() {
-		var imageURL string
-		if err := rows.Scan(&imageURL); err != nil {
-			return fmt.Errorf("failed to scan thumbnail: %v", err)
-		}
-		if imageURL != "" {
-			imageURLs = append(imageURLs, imageURL)
-		}
-	}
+    var imageURLs []string
+    for rows.Next() {
+        var imageURL string
+        if err := rows.Scan(&imageURL); err != nil {
+            return fmt.Errorf("failed to scan thumbnail: %v", err)
+        }
+        if imageURL != "" {
+            imageURLs = append(imageURLs, imageURL)
+        }
+    }
 
-	// Delete legacy thumbnails (sizes are deleted via CASCADE)
-	_, err = tx.Exec("DELETE FROM thumbnails WHERE product_id = ?", productID)
-	if err != nil {
-		return fmt.Errorf("failed to delete thumbnails: %v", err)
-	}
+    // Delete legacy thumbnails (sizes are deleted via CASCADE)
+    _, err = tx.ExecContext(ctx, "DELETE FROM thumbnails WHERE product_id = ?", productID)
+    if err != nil {
+        return fmt.Errorf("failed to delete thumbnails: %v", err)
+    }
 
-	// Delete main thumbnail (via thumbnail_id)
-	var thumbnailURL string
-	if thumbnailID != 0 {
-		err = tx.QueryRow("SELECT image_url FROM thumbnails WHERE id = ?", thumbnailID).Scan(&thumbnailURL)
-		if err != nil && err != sql.ErrNoRows {
-			return fmt.Errorf("failed to query main thumbnail: %v", err)
-		}
-		if thumbnailURL != "" {
-			imageURLs = append(imageURLs, thumbnailURL)
-			_, err = tx.Exec("DELETE FROM thumbnails WHERE id = ?", thumbnailID)
-			if err != nil {
-				return fmt.Errorf("failed to delete main thumbnail: %v", err)
-			}
-		}
-	}
+    // Delete main thumbnail (via thumbnail_id)
+    var thumbnailURL string
+    if thumbnailID != 0 {
+        err = tx.QueryRowContext(ctx, "SELECT image_url FROM thumbnails WHERE id = ?", thumbnailID).Scan(&thumbnailURL)
+        if err != nil && err != sql.ErrNoRows {
+            return fmt.Errorf("failed to query main thumbnail: %v", err)
+        }
+        if thumbnailURL != "" {
+            imageURLs = append(imageURLs, thumbnailURL)
+            _, err = tx.ExecContext(ctx, "DELETE FROM thumbnails WHERE id = ?", thumbnailID)
+            if err != nil {
+                return fmt.Errorf("failed to delete main thumbnail: %v", err)
+            }
+        }
+    }
 
-	// Delete product
-	result, err := tx.Exec("DELETE FROM products WHERE id = ? AND market_id = ?", productID, marketID)
-	if err != nil {
-		return fmt.Errorf("failed to delete product: %v", err)
-	}
+    // Delete product
+    result, err := tx.ExecContext(ctx, "DELETE FROM products WHERE id = ? AND market_id = ?", productID, marketID)
+    if err != nil {
+        return fmt.Errorf("failed to delete product: %v", err)
+    }
 
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("failed to check rows affected: %v", err)
-	}
-	if rowsAffected == 0 {
-		return fmt.Errorf("product not found or unauthorized")
-	}
+    rowsAffected, err := result.RowsAffected()
+    if err != nil {
+        return fmt.Errorf("failed to check rows affected: %v", err)
+    }
+    if rowsAffected == 0 {
+        return fmt.Errorf("product not found or unauthorized")
+    }
 
-	// Commit transaction
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %v", err)
-	}
+    // Commit transaction
+    if err := tx.Commit(); err != nil {
+        return fmt.Errorf("failed to commit transaction: %v", err)
+    }
 
-	// Delete thumbnail files
-	uploadDir := os.Getenv("UPLOAD_DIR")
-	if uploadDir == "" {
-		uploadDir = "./Uploads"
-	}
-	for _, imageURL := range imageURLs {
-		filePath := filepath.Join(uploadDir, filepath.Base(imageURL))
-		if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
-			fmt.Printf("Warning: failed to delete file %s: %v\n", filePath, err)
-		}
-	}
+    // Delete thumbnail files
+    uploadDir := os.Getenv("UPLOAD_DIR")
+    if uploadDir == "" {
+        uploadDir = "./Uploads"
+    }
+    for _, imageURL := range imageURLs {
+        filePath := filepath.Join(uploadDir, filepath.Base(imageURL))
+        if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
+            log.Printf("Warning: failed to delete file %s: %v", filePath, err)
+        }
+    }
 
-	// Invalidate market-specific product caches
-	marketKeys, err := s.redis.SMembers(context.Background(), fmt.Sprintf("market:%d:products_cache_keys", marketID)).Result()
-	if err == nil && len(marketKeys) > 0 {
-		s.redis.Del(context.Background(), marketKeys...)
-	} else if err != nil && err != redis.Nil {
-		fmt.Printf("Failed to invalidate market cache: %v\n", err)
-	}
+    // Invalidate caches using pipeline
+    pipe := s.redis.Pipeline()
+    marketKeys, err := s.redis.SMembers(ctx, fmt.Sprintf("market:%d:products_cache_keys", marketID)).Result()
+    if err == nil && len(marketKeys) > 0 {
+        pipe.Del(ctx, marketKeys...)
+    } else if err != nil && err != redis.Nil {
+        log.Printf("Failed to fetch market cache keys: %v", err)
+    }
 
-	// Invalidate global product caches
-	globalKeys, err := s.redis.SMembers(context.Background(), "global_products_cache_keys").Result()
-	if err == nil && len(globalKeys) > 0 {
-		s.redis.Del(context.Background(), globalKeys...)
-	} else if err != nil && err != redis.Nil {
-		fmt.Printf("Failed to invalidate global cache: %v\n", err)
-	}
+    globalKeys, err := s.redis.SMembers(ctx, "global_products_cache_keys").Result()
+    if err == nil && len(globalKeys) > 0 {
+        pipe.Del(ctx, globalKeys...)
+    } else if err != nil && err != redis.Nil {
+        log.Printf("Failed to fetch global cache keys: %v", err)
+    }
 
-	return nil
+    if _, err := pipe.Exec(ctx); err != nil {
+        log.Printf("Failed to invalidate caches: %v", err)
+    }
+
+    return nil
 }
 
 // CreateMarket creates a market
@@ -1374,125 +1397,189 @@ func generateOTP(length int) string {
 
 // CreateCategory creates a new category
 func (s *DBService) CreateCategory(name, name_ru, thumbnailURL string) (int, error) {
-	if name == "" {
-		return 0, fmt.Errorf("category name is required")
-	}
+    if name == "" {
+        return 0, fmt.Errorf("category name is required")
+    }
 
-	result, err := s.db.Exec("INSERT INTO categories (name, name_ru, thumbnail_url) VALUES (?, ?, ?)", name, name_ru, thumbnailURL)
-	if err != nil {
-		return 0, fmt.Errorf("failed to create category: %v", err)
-	}
+    result, err := s.db.Exec("INSERT INTO categories (name, name_ru, thumbnail_url) VALUES (?, ?, ?)", name, name_ru, thumbnailURL)
+    if err != nil {
+        return 0, fmt.Errorf("failed to create category: %v", err)
+    }
 
-	categoryID, err := result.LastInsertId()
-	if err != nil {
-		return 0, fmt.Errorf("failed to retrieve category ID: %v", err)
-	}
+    categoryID, err := result.LastInsertId()
+    if err != nil {
+        return 0, fmt.Errorf("failed to retrieve category ID: %v", err)
+    }
 
-	// Invalidate global product caches
-	globalKeys, err := s.redis.SMembers(context.Background(), "global_products_cache_keys").Result()
-	if err == nil && len(globalKeys) > 0 {
-		s.redis.Del(context.Background(), globalKeys...)
-	} else if err != nil && err != redis.Nil {
-		log.Printf("Failed to invalidate global cache: %v", err)
-	}
+    // Invalidate caches
+    ctx := context.Background()
 
-	return int(categoryID), nil
+    // Invalidate global product caches
+    globalKeys, err := s.redis.SMembers(ctx, "global_products_cache_keys").Result()
+    if err == nil && len(globalKeys) > 0 {
+        s.redis.Del(ctx, globalKeys...)
+    } else if err != nil && err != redis.Nil {
+        log.Printf("Failed to invalidate global product cache: %v", err)
+    }
+
+    // Invalidate category caches
+    categoryKeys, err := s.redis.SMembers(ctx, "categories_cache_keys").Result()
+    if err == nil && len(categoryKeys) > 0 {
+        s.redis.Del(ctx, categoryKeys...)
+        s.redis.Del(ctx, "categories_cache_keys") // Clear the tracking set
+    } else if err != nil && err != redis.Nil {
+        log.Printf("Failed to invalidate category cache: %v", err)
+    }
+
+    return int(categoryID), nil
 }
 
 // DeleteCategory deletes a category and its thumbnail
 func (s *DBService) DeleteCategory(categoryID int) error {
-	tx, err := s.db.Begin()
-	if err != nil {
-		return fmt.Errorf("failed to start transaction: %v", err)
-	}
-	defer tx.Rollback()
+    tx, err := s.db.Begin()
+    if err != nil {
+        return fmt.Errorf("failed to start transaction: %v", err)
+    }
+    defer tx.Rollback()
 
-	// Fetch thumbnail URL
-	var thumbnailURL string
-	err = tx.QueryRow("SELECT thumbnail_url FROM categories WHERE id = ?", categoryID).Scan(&thumbnailURL)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return fmt.Errorf("category not found")
-		}
-		return fmt.Errorf("failed to retrieve category: %v", err)
-	}
+    // Fetch thumbnail URL
+    var thumbnailURL string
+    err = tx.QueryRow("SELECT thumbnail_url FROM categories WHERE id = ?", categoryID).Scan(&thumbnailURL)
+    if err != nil {
+        if err == sql.ErrNoRows {
+            return fmt.Errorf("category not found")
+        }
+        return fmt.Errorf("failed to retrieve category: %v", err)
+    }
 
-	// Delete category
-	result, err := tx.Exec("DELETE FROM categories WHERE id = ?", categoryID)
-	if err != nil {
-		return fmt.Errorf("failed to delete category: %v", err)
-	}
+    // Delete category
+    result, err := tx.Exec("DELETE FROM categories WHERE id = ?", categoryID)
+    if err != nil {
+        return fmt.Errorf("failed to delete category: %v", err)
+    }
 
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("failed to check rows affected: %v", err)
-	}
-	if rowsAffected == 0 {
-		return fmt.Errorf("category not found")
-	}
+    rowsAffected, err := result.RowsAffected()
+    if err != nil {
+        return fmt.Errorf("failed to check rows affected: %v", err)
+    }
+    if rowsAffected == 0 {
+        return fmt.Errorf("category not found")
+    }
 
-	// Commit transaction
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %v", err)
-	}
+    // Commit transaction
+    if err := tx.Commit(); err != nil {
+        return fmt.Errorf("failed to commit transaction: %v", err)
+    }
 
-	// Delete thumbnail file
-	if thumbnailURL != "" {
-		uploadDir := os.Getenv("UPLOAD_DIR")
-		if uploadDir == "" {
-			uploadDir = "./uploads/categories"
-		}
-		filePath := filepath.Join(uploadDir, filepath.Base(thumbnailURL))
-		if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
-			log.Printf("Warning: failed to delete category thumbnail %s: %v", filePath, err)
-		}
-	}
+    // Delete thumbnail file
+    if thumbnailURL != "" {
+        uploadDir := os.Getenv("UPLOAD_DIR")
+        if uploadDir == "" {
+            uploadDir = "./uploads/categories"
+        }
+        filePath := filepath.Join(uploadDir, filepath.Base(thumbnailURL))
+        if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
+            log.Printf("Warning: failed to delete category thumbnail %s: %v", filePath, err)
+        }
+    }
 
-	// Invalidate global product caches
-	globalKeys, err := s.redis.SMembers(context.Background(), "global_products_cache_keys").Result()
-	if err == nil && len(globalKeys) > 0 {
-		s.redis.Del(context.Background(), globalKeys...)
-	} else if err != nil && err != redis.Nil {
-		log.Printf("Failed to invalidate global cache: %v", err)
-	}
+    // Invalidate caches
+    ctx := context.Background()
 
-	return nil
+    // Invalidate global product caches
+    globalKeys, err := s.redis.SMembers(ctx, "global_products_cache_keys").Result()
+    if err == nil && len(globalKeys) > 0 {
+        s.redis.Del(ctx, globalKeys...)
+    } else if err != nil && err != redis.Nil {
+        log.Printf("Failed to invalidate global product cache: %v", err)
+    }
+
+    // Invalidate category caches
+    categoryKeys, err := s.redis.SMembers(ctx, "categories_cache_keys").Result()
+    if err == nil && len(categoryKeys) > 0 {
+        s.redis.Del(ctx, categoryKeys...)
+        s.redis.Del(ctx, "categories_cache_keys") // Clear the tracking set
+    } else if err != nil && err != redis.Nil {
+        log.Printf("Failed to invalidate category cache: %v", err)
+    }
+
+    return nil
 }
 
 // GetCategories retrieves paginated categories with optional name search
 func (s *DBService) GetCategories(page, limit int, search string) ([]models.Category, error) {
-	if page < 1 {
-		page = 1
-	}
-	if limit < 1 {
-		limit = 10
-	}
-	offset := (page - 1) * limit
+    if page < 1 {
+        page = 1
+    }
+    if limit < 1 {
+        limit = 10
+    }
+    offset := (page - 1) * limit
 
-	query := `
-		SELECT id, name, name_ru, thumbnail_url
-		FROM categories
-		WHERE name LIKE ?
-		ORDER BY id DESC
-		LIMIT ? OFFSET ?`
-	searchParam := "%" + search + "%"
+    // Generate cache key (exclude search)
+    cacheKey := fmt.Sprintf("categories:page:%d:limit:%d", page, limit)
+    ctx := context.Background()
 
-	rows, err := s.db.Query(query, searchParam, limit, offset)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query categories: %v", err)
-	}
-	defer rows.Close()
+    // Check Redis cache only if search is empty
+    var categories []models.Category
+    if search == "" {
+        cached, err := s.redis.Get(ctx, cacheKey).Result()
+        if err == nil {
+            if err := json.Unmarshal([]byte(cached), &categories); err != nil {
+                log.Printf("Failed to unmarshal cached categories: %v", err)
+            } else {
+                return categories, nil
+            }
+        } else if err != redis.Nil {
+            log.Printf("Redis error: %v", err)
+        }
+    }
 
-	var categories []models.Category = []models.Category{}
-	for rows.Next() {
-		var c models.Category
-		if err := rows.Scan(&c.ID, &c.Name, &c.NameRu, &c.ThumbnailURL); err != nil {
-			return nil, fmt.Errorf("failed to scan category: %v", err)
-		}
-		categories = append(categories, c)
-	}
+    // Query the database
+    query := `
+        SELECT id, name, name_ru, thumbnail_url
+        FROM categories
+        WHERE 1=1`
+    args := []interface{}{}
+    if search != "" {
+        query += " AND LOWER(name) LIKE ?"
+        args = append(args, "%"+strings.ToLower(search)+"%")
+    }
+    query += " ORDER BY id DESC LIMIT ? OFFSET ?"
+    args = append(args, limit, offset)
 
-	return categories, nil
+    rows, err := s.db.Query(query, args...)
+    if err != nil {
+        return nil, fmt.Errorf("failed to query categories: %v", err)
+    }
+    defer rows.Close()
+
+    categories = []models.Category{}
+    for rows.Next() {
+        var c models.Category
+        if err := rows.Scan(&c.ID, &c.Name, &c.NameRu, &c.ThumbnailURL); err != nil {
+            return nil, fmt.Errorf("failed to scan category: %v", err)
+        }
+        categories = append(categories, c)
+    }
+
+    // Cache the result only if search is empty
+    if search == "" && len(categories) > 0 {
+        jsonData, err := json.Marshal(categories)
+        if err != nil {
+            log.Printf("Failed to marshal categories for caching: %v", err)
+        } else {
+            ttl := 3600 * time.Second // 1 hour TTL
+            pipe := s.redis.Pipeline()
+            pipe.Set(ctx, cacheKey, jsonData, ttl)
+            pipe.SAdd(ctx, "categories_cache_keys", cacheKey)
+            if _, err := pipe.Exec(ctx); err != nil {
+                log.Printf("Failed to cache categories: %v", err)
+            }
+        }
+    }
+
+    return categories, nil
 }
 
 // AddToCart adds or updates a product in the user's cart under a single cart order

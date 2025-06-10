@@ -30,7 +30,7 @@ func (h *Handler) deleteProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.db.DeleteProduct(claims.MarketID, productID)
+	err = h.db.DeleteProduct(r.Context(), claims.MarketID, productID)
 	if err != nil {
 		if err.Error() == "product not found or unauthorized" {
 			respondError(w, http.StatusNotFound, err.Error())
