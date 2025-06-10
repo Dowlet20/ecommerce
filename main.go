@@ -22,9 +22,10 @@ import (
 // @name Authorization
 // @description Bearer token for authentication (e.g., "Bearer <token>")
 func main() {
-	dbService, err := services.NewDBService("root", "", "ecommerce_db")
+	// Provide the Redis address as the fourth argument
+	dbService, err := services.NewDBService("root", "", "ecommerce_db", "localhost:6379")
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		log.Fatalf("Failed to connect to database or Redis: %v", err)
 	}
 	defer dbService.Close()
 

@@ -1,6 +1,7 @@
 package services
 
 import (
+	"log"
 	"crypto/rand"
 	"database/sql"
 	"fmt"
@@ -17,12 +18,16 @@ import (
 	"Dowlet_projects/ecommerce/models"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/go-redis/redis/v8"
 	"golang.org/x/crypto/bcrypt"
+	"context"
+	"encoding/json"
 )
 
 // DBService handles database operations
 type DBService struct {
-	db *sql.DB
+	db    *sql.DB
+	redis *redis.Client
 }
 
 // ThumbnailData represents data for a thumbnail to be inserted
@@ -46,19 +51,26 @@ type ThumbnailWithProduct struct {
 	CreatedAt   string  `json:"created_at"` // Changed to string
 }
 
-// NewDBService creates a new database service
-func NewDBService(user, password, dbname string) (*DBService, error) {
+// NewDBService creates a new database service with Redis
+func NewDBService(user, password, dbname, redisAddr string) (*DBService, error) {
 	connectionString := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/%s", user, password, dbname)
 	db, err := sql.Open("mysql", connectionString)
 	if err != nil {
 		return nil, err
 	}
-	return &DBService{db: db}, nil
+	redisClient := redis.NewClient(&redis.Options{
+		Addr: redisAddr,
+	})
+	if _, err := redisClient.Ping(context.Background()).Result(); err != nil {
+		return nil, fmt.Errorf("failed to connect to Redis: %v", err)
+	}
+	return &DBService{db: db, redis: redisClient}, nil
 }
 
-// Close closes the database connection
+// Close closes the database and Redis connections
 func (s *DBService) Close() {
 	s.db.Close()
+	s.redis.Close()
 }
 
 // SaveVerificationCode stores a verification code with registration data
@@ -119,58 +131,77 @@ func (s *DBService) GetUserByPhone(phone string) (int, error) {
 	fmt.Println(userID)
 	return userID, err
 }
+// GetMarkets retrieves all markets with caching
+func (s *DBService) GetMarkets(ctx context.Context, isNew, isVip bool, duration int) ([]models.Market, error) {
+	cacheKey := fmt.Sprintf("markets:new:%t:vip:%t:duration:%d", isNew, isVip, duration)
+	cached, err := s.redis.Get(ctx, cacheKey).Result()
+	if err == nil {
+		var markets []models.Market
+		if err := json.Unmarshal([]byte(cached), &markets); err == nil {
+			return markets, nil
+		}
+		log.Printf("Failed to unmarshal cached markets: %v", err)
+	} else if err != redis.Nil {
+		log.Printf("Redis get error: %v", err)
+	}
 
-// GetMarkets retrieves all markets
-func (s *DBService) GetMarkets(isNew, isVip bool, duration int) ([]models.Market, error) {
-	query := `SELECT 
-		id, 
-		name, 
-		name_ru, 
-		location, 
-		location_ru, 
-		thumbnail_url, 
-		delivery_price, 
-		phone,
-		CASE 
-			WHEN DATEDIFF(CURDATE(), created_at) <= ? THEN true 
-			ELSE false 
-		END as isNew,
-		isVIP
-		FROM markets WHERE 1=1`
-
+	query := `SELECT id, name, name_ru, location, location_ru, thumbnail_url, delivery_price, phone,
+              CASE WHEN DATEDIFF(CURDATE(), created_at) <= ? THEN true ELSE false END as isNew,
+              isVIP FROM markets WHERE 1=1`
 	args := []interface{}{duration}
-
 	if isNew {
 		query += " AND DATEDIFF(CURDATE(), created_at) <= ?"
 		args = append(args, duration)
 	}
-
 	if isVip {
 		query += " AND isVIP = ?"
 		args = append(args, true)
 	}
-
 	query += " ORDER BY id DESC"
 
 	rows, err := s.db.Query(query, args...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to query markets: %v", err)
 	}
 	defer rows.Close()
 
-	var markets []models.Market = []models.Market{}
+	var markets []models.Market
 	for rows.Next() {
 		var m models.Market
 		if err := rows.Scan(&m.ID, &m.Name, &m.NameRu, &m.Location, &m.LocationRu, &m.ThumbnailURL, &m.DeliveryPrice, &m.Phone, &m.IsNew, &m.IsVIP); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to scan market: %v", err)
 		}
 		markets = append(markets, m)
 	}
+
+	marketsJSON, err := json.Marshal(markets)
+	if err != nil {
+		log.Printf("Failed to marshal markets: %v", err)
+	} else {
+		pipe := s.redis.Pipeline()
+		pipe.Set(ctx, cacheKey, marketsJSON, 1*time.Hour)
+		pipe.SAdd(ctx, "markets_cache_keys", cacheKey)
+		if _, err := pipe.Exec(ctx); err != nil {
+			log.Printf("Failed to set cache: %v", err)
+		}
+	}
+
 	return markets, nil
 }
+// GetMarketProducts retrieves paginated products for a market with caching
+func (s *DBService) GetMarketProducts(ctx context.Context, marketID, page, limit int) ([]models.Product, error) {
+	cacheKey := fmt.Sprintf("market:%d:products:page:%d:limit:%d", marketID, page, limit)
+	cached, err := s.redis.Get(ctx, cacheKey).Result()
+	if err == nil {
+		var products []models.Product
+		if err := json.Unmarshal([]byte(cached), &products); err == nil {
+			return products, nil
+		}
+		log.Printf("Failed to unmarshal cached products: %v", err)
+	} else if err != redis.Nil {
+		log.Printf("Redis get error: %v", err)
+	}
 
-// GetMarketProducts retrieves paginated products for a market
-func (s *DBService) GetMarketProducts(marketID, page, limit int) ([]models.Product, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -181,36 +212,36 @@ func (s *DBService) GetMarketProducts(marketID, page, limit int) ([]models.Produ
 
 	query := `
         SELECT 
-			p.id, 
-			p.market_id, 
-			m.name as market_name, 
-			m.name_ru as market_name_ru, 
-			p.category_id, 
-			c.name as category_name,
-			c.name_ru as category_name_ru,
-			p.name, 
-			p.name_ru, 
-			p.price, 
-			p.discount, 
-			p.description, 
-			p.description_ru, 
-			p.created_at, 
-			IF(f.user_id IS NOT NULL, true, false) as is_favorite,
-			COALESCE(t.image_url, '') as thumbnail_url,
-			CASE 
-				WHEN DATEDIFF(CURDATE(), p.created_at) <= 7 THEN true 
-				ELSE false 
-			END as isNew,
-			CASE 
-				WHEN p.discount IS NOT NULL AND p.discount > 0 
-				THEN p.price - (p.price * p.discount / 100) 
-				ELSE p.price 
-			END as final_price
-		FROM products p
-		LEFT JOIN categories c ON p.category_id = c.id 
-		LEFT JOIN markets m ON p.market_id = m.id 
-		LEFT JOIN favorites f ON p.id = f.product_id 
-		LEFT JOIN thumbnails t ON p.thumbnail_id = t.id 
+            p.id, 
+            p.market_id, 
+            m.name as market_name, 
+            m.name_ru as market_name_ru, 
+            p.category_id, 
+            c.name as category_name,
+            c.name_ru as category_name_ru,
+            p.name, 
+            p.name_ru, 
+            p.price, 
+            p.discount, 
+            p.description, 
+            p.description_ru, 
+            p.created_at, 
+            IF(f.user_id IS NOT NULL, true, false) as is_favorite,
+            COALESCE(t.image_url, '') as thumbnail_url,
+            CASE 
+                WHEN DATEDIFF(CURDATE(), p.created_at) <= 7 THEN true 
+                ELSE false 
+            END as isNew,
+            CASE 
+                WHEN p.discount IS NOT NULL AND p.discount > 0 
+                THEN p.price - (p.price * p.discount / 100) 
+                ELSE p.price 
+            END as final_price
+        FROM products p
+        LEFT JOIN categories c ON p.category_id = c.id 
+        LEFT JOIN markets m ON p.market_id = m.id 
+        LEFT JOIN favorites f ON p.id = f.product_id 
+        LEFT JOIN thumbnails t ON p.thumbnail_id = t.id 
         WHERE p.market_id = ?
         ORDER BY p.id LIMIT ? OFFSET ?`
 
@@ -220,7 +251,7 @@ func (s *DBService) GetMarketProducts(marketID, page, limit int) ([]models.Produ
 	}
 	defer rows.Close()
 
-	var products []models.Product = []models.Product{}
+	var products []models.Product
 	for rows.Next() {
 		var p models.Product
 		var createdAtStr string
@@ -229,16 +260,26 @@ func (s *DBService) GetMarketProducts(marketID, page, limit int) ([]models.Produ
 		}
 		p.CreatedAt = createdAtStr
 		p.Thumbnails = []models.Thumbnail{}
-		// if err != nil {
-		// 	return nil, fmt.Errorf("failed to get product details: %v", err)
-		// }
 		products = append(products, p)
+	}
+
+	productsJSON, err := json.Marshal(products)
+	if err != nil {
+		log.Printf("Failed to marshal products: %v", err)
+	} else {
+		pipe := s.redis.Pipeline()
+		pipe.Set(ctx, cacheKey, productsJSON, 10*time.Minute)
+		pipe.SAdd(ctx, fmt.Sprintf("market:%d:products_cache_keys", marketID), cacheKey)
+		if _, err := pipe.Exec(ctx); err != nil {
+			log.Printf("Failed to set cache: %v", err)
+		}
 	}
 
 	return products, nil
 }
+
 // GetMarketByID retrieves a market and its products by market ID with pagination
-func (s *DBService) GetMarketByID(marketID, page, limit int) (*models.Market, []models.Product, int, error) {
+func (s *DBService) GetMarketByID(ctx context.Context, marketID, page, limit int) (*models.Market, []models.Product, int, error) {
 	var market models.Market
 	err := s.db.QueryRow(`
         SELECT id, phone, name, name_ru, location, location_ru, delivery_price, thumbnail_url
@@ -251,7 +292,7 @@ func (s *DBService) GetMarketByID(marketID, page, limit int) (*models.Market, []
 		return nil, nil, 0, fmt.Errorf("failed to query market: %v", err)
 	}
 
-	products, err := s.GetMarketProducts(marketID, page, limit)
+	products, err := s.GetMarketProducts(ctx, marketID, page, limit)
 	if err != nil {
 		return nil, nil, 0, fmt.Errorf("failed to query products: %v", err)
 	}
@@ -266,21 +307,8 @@ func (s *DBService) GetMarketByID(marketID, page, limit int) (*models.Market, []
 	return &market, products, totalCount, nil
 }
 
-// UpdateProduct updates a product
-func (s *DBService) UpdateProduct(marketID, productID int, name string, name_ru string, price float64, discount float64, description string, description_ru string) error {
-	// priceFloat, err := strconv.ParseFloat(price, 64)
-	// if err != nil {
-	// 	return fmt.Errorf("invalid price: %v", err)
-	// }
-
-	// var discountFloat float64
-	// if discount != "" {
-	// 	discountFloat, err = strconv.ParseFloat(discount, 64)
-	// 	if err != nil {
-	// 		return fmt.Errorf("invalid discount: %v", err)
-	// 	}
-	// }
-
+// UpdateProduct updates a product and invalidates cache
+func (s *DBService) UpdateProduct(marketID, productID int, name, name_ru string, price, discount float64, description, description_ru string) error {
 	// Verify product exists and belongs to market
 	var exists bool
 	err := s.db.QueryRow("SELECT EXISTS(SELECT 1 FROM products WHERE id = ? AND market_id = ?)", productID, marketID).Scan(&exists)
@@ -291,19 +319,51 @@ func (s *DBService) UpdateProduct(marketID, productID int, name string, name_ru 
 		return fmt.Errorf("product not found or unauthorized")
 	}
 
+	// Update product
 	_, err = s.db.Exec(`
 		UPDATE products 
-		SET name = ?, name_ru = ?, price = ?, discount = ?, description = ?,
-		description_ru = ? WHERE id = ? AND market_id = ?`,
+		SET name = ?, name_ru = ?, price = ?, discount = ?, description = ?, description_ru = ?
+		WHERE id = ? AND market_id = ?`,
 		name, name_ru, price, discount, description, description_ru, productID, marketID)
 	if err != nil {
 		return fmt.Errorf("failed to update product: %v", err)
 	}
 
+	// Invalidate market-specific product caches
+	marketKeys, err := s.redis.SMembers(context.Background(), fmt.Sprintf("market:%d:products_cache_keys", marketID)).Result()
+	if err == nil && len(marketKeys) > 0 {
+		s.redis.Del(context.Background(), marketKeys...)
+	} else if err != nil && err != redis.Nil {
+		fmt.Printf("Failed to invalidate market cache: %v\n", err)
+	}
+
+	// Invalidate global product caches
+	globalKeys, err := s.redis.SMembers(context.Background(), "global_products_cache_keys").Result()
+	if err == nil && len(globalKeys) > 0 {
+		s.redis.Del(context.Background(), globalKeys...)
+	} else if err != nil && err != redis.Nil {
+		fmt.Printf("Failed to invalidate global cache: %v\n", err)
+	}
+
 	return nil
 }
-// GetPaginatedProducts retrieves products with pagination, optional filters, and sorting
-func (s *DBService) GetPaginatedProducts(categoryID, duration, page, limit int, search string, random bool, startPrice, endPrice float64, sort string, hasDiscount, isNew bool) ([]models.Product, error) {
+// GetPaginatedProducts retrieves products with pagination, optional filters, and sorting with caching
+func (s *DBService) GetPaginatedProducts(ctx context.Context, categoryID, duration, page, limit int, search string, random bool, startPrice, endPrice float64, sort string, hasDiscount, isNew bool) ([]models.Product, error) {
+	cacheKey := fmt.Sprintf("products:cat:%d:dur:%d:page:%d:limit:%d:search:%s:random:%t:start:%.2f:end:%.2f:sort:%s:discount:%t:new:%t",
+		categoryID, duration, page, limit, search, random, startPrice, endPrice, sort, hasDiscount, isNew)
+
+	cached, err := s.redis.Get(ctx, cacheKey).Result()
+	if err == nil {
+		var products []models.Product
+		if err := json.Unmarshal([]byte(cached), &products); err == nil {
+			return products, nil
+		}
+		log.Printf("Failed to unmarshal cached products: %v", err)
+	} else if err != redis.Nil {
+		log.Printf("Redis get error: %v", err)
+	}
+
+	// Pagination setup
 	if page < 1 {
 		page = 1
 	}
@@ -312,71 +372,65 @@ func (s *DBService) GetPaginatedProducts(categoryID, duration, page, limit int, 
 	}
 	offset := (page - 1) * limit
 
+	// Build SQL query
 	query := `
-		SELECT 
-			p.id, 
-			p.market_id, 
-			m.name as market_name, 
-			m.name_ru as market_name_ru, 
-			p.category_id, 
-			c.name as category_name,
-			c.name_ru as category_name_ru,
-			p.name, 
-			p.name_ru, 
-			p.price, 
-			p.discount, 
-			p.description, 
-			p.description_ru, 
-			p.created_at, 
-			IF(f.user_id IS NOT NULL, true, false) as is_favorite,
-			COALESCE(t.image_url, '') as thumbnail_url,
-			CASE 
-				WHEN DATEDIFF(CURDATE(), p.created_at) <= ? THEN true 
-				ELSE false 
-			END as isNew,
-			CASE 
-				WHEN p.discount IS NOT NULL AND p.discount > 0 
-				THEN p.price - (p.price * p.discount / 100) 
-				ELSE p.price 
-			END as final_price
-		FROM products p 
-		LEFT JOIN categories c ON p.category_id = c.id
-		LEFT JOIN markets m ON p.market_id = m.id 
-		LEFT JOIN favorites f ON p.id = f.product_id 
-		LEFT JOIN thumbnails t ON p.thumbnail_id = t.id 
-		WHERE p.is_active = true`
-
+        SELECT 
+            p.id, 
+            p.market_id, 
+            m.name as market_name, 
+            m.name_ru as market_name_ru, 
+            p.category_id, 
+            c.name as category_name,
+            c.name_ru as category_name_ru,
+            p.name, 
+            p.name_ru, 
+            p.price, 
+            p.discount, 
+            p.description, 
+            p.description_ru, 
+            p.created_at, 
+            IF(f.user_id IS NOT NULL, true, false) as is_favorite,
+            COALESCE(t.image_url, '') as thumbnail_url,
+            CASE 
+                WHEN DATEDIFF(CURDATE(), p.created_at) <= ? THEN true 
+                ELSE false 
+            END as isNew,
+            CASE 
+                WHEN p.discount IS NOT NULL AND p.discount > 0 
+                THEN p.price - (p.price * p.discount / 100) 
+                ELSE p.price 
+            END as final_price
+        FROM products p 
+        LEFT JOIN categories c ON p.category_id = c.id
+        LEFT JOIN markets m ON p.market_id = m.id 
+        LEFT JOIN favorites f ON p.id = f.product_id 
+        LEFT JOIN thumbnails t ON p.thumbnail_id = t.id 
+        WHERE p.is_active = true`
 	args := []interface{}{duration}
 
 	if categoryID != 0 {
 		query += " AND p.category_id = ?"
 		args = append(args, categoryID)
 	}
-
 	if search != "" {
 		query += " AND LOWER(p.name) LIKE ?"
 		args = append(args, "%"+strings.ToLower(search)+"%")
 	}
-
 	if startPrice > 0 {
 		query += " AND (CASE WHEN p.discount IS NOT NULL AND p.discount > 0 THEN p.price - (p.price * p.discount / 100) ELSE p.price END) >= ?"
 		args = append(args, startPrice)
 	}
-
 	if endPrice > 0 {
 		query += " AND (CASE WHEN p.discount IS NOT NULL AND p.discount > 0 THEN p.price - (p.price * p.discount / 100) ELSE p.price END) <= ?"
 		args = append(args, endPrice)
 	}
-
 	if hasDiscount {
 		query += " AND p.discount IS NOT NULL AND p.discount > 0"
 	}
-
 	if isNew {
 		query += " AND DATEDIFF(CURDATE(), p.created_at) <= ?"
 		args = append(args, duration)
 	}
-
 	if random {
 		query += " ORDER BY RAND()"
 	} else {
@@ -389,26 +443,37 @@ func (s *DBService) GetPaginatedProducts(categoryID, duration, page, limit int, 
 			query += " ORDER BY p.id DESC"
 		}
 	}
-
 	query += " LIMIT ? OFFSET ?"
 	args = append(args, limit, offset)
 
+	// Execute query
 	rows, err := s.db.Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query products: %v", err)
 	}
 	defer rows.Close()
 
-	var products []models.Product = []models.Product{}
+	var products []models.Product
 	for rows.Next() {
 		var p models.Product
 		if err := rows.Scan(&p.ID, &p.MarketID, &p.MarketName, &p.MarketNameRu, &p.CategoryID, &p.CategoryName, &p.CategoryNameRu, &p.Name, &p.NameRu, &p.Price, &p.Discount,
 			&p.Description, &p.DescriptionRu, &p.CreatedAt, &p.IsFavorite, &p.ThumbnailURL, &p.IsNew, &p.FinalPrice); err != nil {
 			return nil, fmt.Errorf("failed to scan product: %v", err)
 		}
-
 		p.Thumbnails = []models.Thumbnail{}
 		products = append(products, p)
+	}
+
+	productsJSON, err := json.Marshal(products)
+	if err != nil {
+		log.Printf("Failed to marshal products: %v", err)
+	} else {
+		pipe := s.redis.Pipeline()
+		pipe.Set(ctx, cacheKey, productsJSON, 10*time.Minute)
+		pipe.SAdd(ctx, "global_products_cache_keys", cacheKey)
+		if _, err := pipe.Exec(ctx); err != nil {
+			log.Printf("Failed to set cache: %v", err)
+		}
 	}
 
 	return products, nil
@@ -492,8 +557,8 @@ func (s *DBService) getProductDetails(productID int) ([]models.Thumbnail, error)
 	return thumbnails, nil
 }
 
-// CreateProduct creates a new product
-func (s *DBService) CreateProduct(marketID, categoryID int, name string, name_ru string, price float64, discount float64, description string, description_ru string, is_active bool, urlPath string, filePath string, filename string) (int, error) {
+// CreateProduct creates a new product and invalidates cache
+func (s *DBService) CreateProduct(marketID, categoryID int, name, name_ru string, price, discount float64, description, description_ru string, is_active bool, urlPath, filePath, filename string) (int, error) {
 	// Verify market exists
 	var exists bool
 	err := s.db.QueryRow("SELECT EXISTS(SELECT 1 FROM markets WHERE id = ?)", marketID).Scan(&exists)
@@ -513,9 +578,15 @@ func (s *DBService) CreateProduct(marketID, categoryID int, name string, name_ru
 		return 0, fmt.Errorf("category not found")
 	}
 
-	var thumbnailID int
+	// Begin transaction
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("failed to start transaction: %v", err)
+	}
+	defer tx.Rollback()
+
 	// Insert into thumbnails table
-	result, err := s.db.Exec("INSERT INTO thumbnails (image_url) VALUES (?)", urlPath)
+	result, err := tx.Exec("INSERT INTO thumbnails (image_url) VALUES (?)", urlPath)
 	if err != nil {
 		os.Remove(filePath) // Clean up file on error
 		return 0, fmt.Errorf("failed to save thumbnail URL: %v", err)
@@ -525,28 +596,30 @@ func (s *DBService) CreateProduct(marketID, categoryID int, name string, name_ru
 		os.Remove(filePath) // Clean up file on error
 		return 0, fmt.Errorf("failed to retrieve thumbnail ID: %v", err)
 	}
-	thumbnailID = int(thumbnailID64)
+	thumbnailID := int(thumbnailID64)
 
-	// Verify thumbnail_id if provided
+	// Verify thumbnail_id
 	if thumbnailID != 0 {
-		err = s.db.QueryRow("SELECT EXISTS(SELECT 1 FROM thumbnails WHERE id = ?)", thumbnailID).Scan(&exists)
+		err = tx.QueryRow("SELECT EXISTS(SELECT 1 FROM thumbnails WHERE id = ?)", thumbnailID).Scan(&exists)
 		if err != nil {
+			os.Remove(filePath)
 			return 0, fmt.Errorf("failed to validate thumbnail: %v", err)
 		}
 		if !exists {
+			os.Remove(filePath)
 			return 0, fmt.Errorf("thumbnail not found")
 		}
 	}
 
-	result, err = s.db.Exec(`
+	// Insert product
+	result, err = tx.Exec(`
         INSERT INTO products (market_id, category_id, name, name_ru, price, discount, description, description_ru, is_active, thumbnail_id)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		marketID, categoryID, name, name_ru, price, discount, description, description_ru, is_active, thumbnailID)
-
 	if err != nil {
 		if thumbnailID != 0 {
-			s.db.Exec("DELETE FROM thumbnails WHERE id = ?", thumbnailID)
-			os.Remove(filepath.Join("uploads", "products", "main", filename))
+			tx.Exec("DELETE FROM thumbnails WHERE id = ?", thumbnailID)
+			os.Remove(filepath.Join("Uploads", "products", "main", filename))
 		}
 		if err.Error() == "market not found" || err.Error() == "category not found" {
 			return 0, fmt.Errorf("couldnt find market or category: %v", err)
@@ -557,6 +630,27 @@ func (s *DBService) CreateProduct(marketID, categoryID int, name string, name_ru
 	productID, err := result.LastInsertId()
 	if err != nil {
 		return 0, fmt.Errorf("failed to retrieve product ID: %v", err)
+	}
+
+	// Commit transaction
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("failed to commit transaction: %v", err)
+	}
+
+	// Invalidate market-specific product caches
+	marketKeys, err := s.redis.SMembers(context.Background(), fmt.Sprintf("market:%d:products_cache_keys", marketID)).Result()
+	if err == nil && len(marketKeys) > 0 {
+		s.redis.Del(context.Background(), marketKeys...)
+	} else if err != nil && err != redis.Nil {
+		fmt.Printf("Failed to invalidate market cache: %v\n", err)
+	}
+
+	// Invalidate global product caches
+	globalKeys, err := s.redis.SMembers(context.Background(), "global_products_cache_keys").Result()
+	if err == nil && len(globalKeys) > 0 {
+		s.redis.Del(context.Background(), globalKeys...)
+	} else if err != nil && err != redis.Nil {
+		fmt.Printf("Failed to invalidate global cache: %v\n", err)
 	}
 
 	return int(productID), nil
@@ -587,8 +681,9 @@ func (s *DBService) GetProductThumbnails(productID string) ([]models.Thumbnail, 
 	return thumbnails, nil
 }
 
-// DeleteProduct deletes a product and its thumbnails
+// DeleteProduct deletes a product and its thumbnails and invalidates cache
 func (s *DBService) DeleteProduct(marketID, productID int) error {
+	// Begin transaction
 	tx, err := s.db.Begin()
 	if err != nil {
 		return fmt.Errorf("failed to start transaction: %v", err)
@@ -669,13 +764,29 @@ func (s *DBService) DeleteProduct(marketID, productID int) error {
 	// Delete thumbnail files
 	uploadDir := os.Getenv("UPLOAD_DIR")
 	if uploadDir == "" {
-		uploadDir = "./uploads"
+		uploadDir = "./Uploads"
 	}
 	for _, imageURL := range imageURLs {
 		filePath := filepath.Join(uploadDir, filepath.Base(imageURL))
 		if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
 			fmt.Printf("Warning: failed to delete file %s: %v\n", filePath, err)
 		}
+	}
+
+	// Invalidate market-specific product caches
+	marketKeys, err := s.redis.SMembers(context.Background(), fmt.Sprintf("market:%d:products_cache_keys", marketID)).Result()
+	if err == nil && len(marketKeys) > 0 {
+		s.redis.Del(context.Background(), marketKeys...)
+	} else if err != nil && err != redis.Nil {
+		fmt.Printf("Failed to invalidate market cache: %v\n", err)
+	}
+
+	// Invalidate global product caches
+	globalKeys, err := s.redis.SMembers(context.Background(), "global_products_cache_keys").Result()
+	if err == nil && len(globalKeys) > 0 {
+		s.redis.Del(context.Background(), globalKeys...)
+	} else if err != nil && err != redis.Nil {
+		fmt.Printf("Failed to invalidate global cache: %v\n", err)
 	}
 
 	return nil
@@ -858,7 +969,6 @@ func (s *DBService) VerifyUserOTP(phone, otp string) (int, error) {
 
 	return userID, nil
 }
-
 // DeleteMarket deletes a market, its products, and thumbnails
 func (s *DBService) DeleteMarket(marketID int) error {
 	tx, err := s.db.Begin()
@@ -941,7 +1051,7 @@ func (s *DBService) DeleteMarket(marketID int) error {
 	for _, imageURL := range imageURLs {
 		filePath := filepath.Join(uploadDir, filepath.Base(imageURL))
 		if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
-			fmt.Printf("Warning: failed to delete file %s: %v\n", filePath, err)
+			log.Printf("Warning: failed to delete file %s: %v", filePath, err)
 		}
 	}
 
@@ -949,8 +1059,24 @@ func (s *DBService) DeleteMarket(marketID int) error {
 	if marketThumbnailURL != "" {
 		filePath := filepath.Join(uploadDir, filepath.Base(marketThumbnailURL))
 		if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
-			fmt.Printf("Warning: failed to delete market thumbnail %s: %v\n", filePath, err)
+			log.Printf("Warning: failed to delete market thumbnail %s: %v", filePath, err)
 		}
+	}
+
+	// Invalidate cache
+	marketKeys, err := s.redis.SMembers(context.Background(), "markets_cache_keys").Result()
+	if err == nil && len(marketKeys) > 0 {
+		s.redis.Del(context.Background(), marketKeys...)
+	} else if err != nil && err != redis.Nil {
+		log.Printf("Failed to invalidate markets cache: %v", err)
+	}
+
+	// Also invalidate market-specific product caches
+	marketProductKeys, err := s.redis.SMembers(context.Background(), fmt.Sprintf("market:%d:products_cache_keys", marketID)).Result()
+	if err == nil && len(marketProductKeys) > 0 {
+		s.redis.Del(context.Background(), marketProductKeys...)
+	} else if err != nil && err != redis.Nil {
+		log.Printf("Failed to invalidate market product cache: %v", err)
 	}
 
 	return nil
@@ -1021,6 +1147,9 @@ func (s *DBService) DeleteThumbnail(marketID int, thumbnailID string) error {
 		}
 	}
 
+	// Invalidate cache
+	s.redis.Del(context.Background(), fmt.Sprintf("market:%d:products:*", marketID))
+
 	return nil
 }
 
@@ -1085,6 +1214,9 @@ func (s *DBService) CreateSizeByThumbnailID(marketID int, thumbnailID string, si
 		return fmt.Errorf("failed to insert size: %v", err)
 	}
 
+	// Invalidate cache
+	s.redis.Del(context.Background(), fmt.Sprintf("market:%d:products:*", marketID))
+
 	return nil
 }
 
@@ -1119,6 +1251,9 @@ func (s *DBService) DeleteSizeByID(marketID int, sizeID string) error {
 	if rowsAffected == 0 {
 		return fmt.Errorf("size not found")
 	}
+
+	// Invalidate cache
+	s.redis.Del(context.Background(), fmt.Sprintf("market:%d:products:*", marketID))
 
 	return nil
 }
@@ -1253,6 +1388,14 @@ func (s *DBService) CreateCategory(name, name_ru, thumbnailURL string) (int, err
 		return 0, fmt.Errorf("failed to retrieve category ID: %v", err)
 	}
 
+	// Invalidate global product caches
+	globalKeys, err := s.redis.SMembers(context.Background(), "global_products_cache_keys").Result()
+	if err == nil && len(globalKeys) > 0 {
+		s.redis.Del(context.Background(), globalKeys...)
+	} else if err != nil && err != redis.Nil {
+		log.Printf("Failed to invalidate global cache: %v", err)
+	}
+
 	return int(categoryID), nil
 }
 
@@ -1301,8 +1444,16 @@ func (s *DBService) DeleteCategory(categoryID int) error {
 		}
 		filePath := filepath.Join(uploadDir, filepath.Base(thumbnailURL))
 		if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
-			fmt.Printf("Warning: failed to delete category thumbnail %s: %v\n", filePath, err)
+			log.Printf("Warning: failed to delete category thumbnail %s: %v", filePath, err)
 		}
+	}
+
+	// Invalidate global product caches
+	globalKeys, err := s.redis.SMembers(context.Background(), "global_products_cache_keys").Result()
+	if err == nil && len(globalKeys) > 0 {
+		s.redis.Del(context.Background(), globalKeys...)
+	} else if err != nil && err != redis.Nil {
+		log.Printf("Failed to invalidate global cache: %v", err)
 	}
 
 	return nil
@@ -2071,8 +2222,6 @@ func (s *DBService) UpdateUserProfile(userID int, req models.UpdateProfileReques
 	return profile, nil
 }
 
-
-
 func (s *DBService) GetMarketProfile(marketID int) (models.MarketProfile, error) {
 	var profile models.MarketProfile
 	err := s.db.QueryRow(`
@@ -2089,7 +2238,6 @@ func (s *DBService) GetMarketProfile(marketID int) (models.MarketProfile, error)
 	}
 	return profile, nil
 }
-
 
 // UpdateMarketProfile updates the profile data for a market
 func (s *DBService) UpdateMarketProfile(marketID int, req models.UpdateMarketProfileRequest, thumbnailURL string) (models.MarketProfile, error) {
@@ -2187,9 +2335,11 @@ func (s *DBService) UpdateMarketProfile(marketID int, req models.UpdateMarketPro
 		return models.MarketProfile{}, fmt.Errorf("failed to commit transaction: %v", err)
 	}
 
+	// Invalidate cache
+	s.redis.Del(context.Background(), "markets:*")
+
 	return profile, nil
 }
-
 
 // CreateBanner inserts a new banner into the banners table
 func (s *DBService) CreateBanner(req models.CreateBannerRequest, thumbnailURL string) (models.Banner, error) {
@@ -2225,7 +2375,6 @@ func (s *DBService) CreateBanner(req models.CreateBannerRequest, thumbnailURL st
 
 	return banner, nil
 }
-
 
 // DeleteBanner deletes a banner by ID and returns its thumbnail URL
 func (s *DBService) DeleteBanner(bannerID int) (string, error) {
@@ -2266,7 +2415,6 @@ func (s *DBService) DeleteBanner(bannerID int) (string, error) {
 	return thumbnailURL, nil
 }
 
-
 // GetAllBanners retrieves all banners from the banners table
 func (s *DBService) GetAllBanners() ([]models.Banner, error) {
 	query := "SELECT id, COALESCE(description, ''), COALESCE(thumbnail_url, '') FROM banners ORDER BY id DESC"
@@ -2291,8 +2439,6 @@ func (s *DBService) GetAllBanners() ([]models.Banner, error) {
 
 	return banners, nil
 }
-
-
 
 // UpdateOrderStatus updates the status of an order
 func (s *DBService) UpdateOrderStatus(orderID, marketID int, status string) error {
@@ -2343,8 +2489,6 @@ func (s *DBService) UpdateOrderStatus(orderID, marketID int, status string) erro
 
 	return nil
 }
-
-
 
 // GetMarketAdminOrders retrieves orders for a market admin's market, optionally filtered by status
 func (s *DBService) GetUserOrders(UserID int, status string) ([]models.UserOrder, error) {
@@ -2402,7 +2546,6 @@ func (s *DBService) GetUserOrders(UserID int, status string) ([]models.UserOrder
 	return orders, nil
 }
 
-
 // CreateMessage inserts a new message into the user_messages table
 func (s *DBService) CreateMessage(userID int, req models.CreateMessageRequest) (int, error) {
 	tx, err := s.db.Begin()
@@ -2432,8 +2575,6 @@ func (s *DBService) CreateMessage(userID int, req models.CreateMessageRequest) (
 
 	return int(id), nil
 }
-
-
 // UpdateSize updates a size entry
 func (s *DBService) UpdateSize(sizeID int, req models.UpdateSizeRequest) (models.SizeUpdate, error) {
 	tx, err := s.db.Begin()
@@ -2445,7 +2586,7 @@ func (s *DBService) UpdateSize(sizeID int, req models.UpdateSizeRequest) (models
 	// Update size
 	result, err := tx.Exec(
 		"UPDATE sizes SET count = ?, price = ?, size = ? WHERE id = ?",
-		req.Count, req.Price, req.Size, sizeID, 
+		req.Count, req.Price, req.Size, sizeID,
 	)
 	if err != nil {
 		return models.SizeUpdate{}, fmt.Errorf("failed to update size: %v", err)
@@ -2474,9 +2615,29 @@ func (s *DBService) UpdateSize(sizeID int, req models.UpdateSizeRequest) (models
 		return models.SizeUpdate{}, fmt.Errorf("failed to commit transaction: %v", err)
 	}
 
+	// Fetch marketID to invalidate market-specific caches
+	var marketID int
+	err = s.db.QueryRow(`
+        SELECT p.market_id
+        FROM sizes s
+        JOIN thumbnails t ON s.thumbnail_id = t.id
+        JOIN products p ON t.product_id = p.id
+        WHERE s.id = ?
+    `, sizeID).Scan(&marketID)
+	if err != nil {
+		log.Printf("Failed to fetch marketID for size %d: %v", sizeID, err)
+	} else {
+		// Invalidate market-specific product caches
+		marketKeys, err := s.redis.SMembers(context.Background(), fmt.Sprintf("market:%d:products_cache_keys", marketID)).Result()
+		if err == nil && len(marketKeys) > 0 {
+			s.redis.Del(context.Background(), marketKeys...)
+		} else if err != nil && err != redis.Nil {
+			log.Printf("Failed to invalidate market cache: %v", err)
+		}
+	}
+
 	return size, nil
 }
-
 
 // UpdateThumbnail updates a thumbnail entry and returns the old image URL
 func (s *DBService) UpdateThumbnail(thumbnailID int, color, color_ru string, marketID int, files []*multipart.FileHeader) (string, string, string, error) {
@@ -2572,10 +2733,11 @@ func (s *DBService) UpdateThumbnail(thumbnailID int, color, color_ru string, mar
 		return "", "", "", fmt.Errorf("failed to commit transaction: %v", err)
 	}
 
+	// Invalidate cache
+	s.redis.Del(context.Background(), fmt.Sprintf("market:%d:products:*", marketID))
 
 	return oldImageURL, filePath, imageCreated, nil
 }
-
 
 // GetAllUserMessages retrieves all user messages
 func (s *DBService) GetAllUserMessages() ([]models.UserMessage, error) {
@@ -2610,7 +2772,6 @@ func (s *DBService) GetAllUserMessages() ([]models.UserMessage, error) {
 	return messages, nil
 }
 
-
 // DeleteUserMessage deletes a user message by ID
 func (s *DBService) DeleteUserMessage(id int) error {
 	tx, err := s.db.Begin()
@@ -2638,8 +2799,6 @@ func (s *DBService) DeleteUserMessage(id int) error {
 
 	return nil
 }
-
-
 
 // CreateMarketMessage inserts a new message into the market_messages table
 func (s *DBService) CreateMarketMessage(marketID int, req models.CreateMarketMessageRequest) (int, error) {

@@ -166,7 +166,7 @@ func (h *Handler) getMarketByID(w http.ResponseWriter, r *http.Request) {
 
 	marketID := claims.MarketID
 
-	market, products, totalCount, err := h.db.GetMarketByID(marketID, page, limit)
+	market, products, totalCount, err := h.db.GetMarketByID(r.Context(), marketID, page, limit)
 	if err != nil {
 		if err.Error() == "market not found" {
 			respondError(w, http.StatusNotFound, err.Error())

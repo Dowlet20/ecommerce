@@ -43,7 +43,7 @@ func (h *Handler) getMarkets(w http.ResponseWriter, r *http.Request) {
 		duration = 7
 	}
 
-	markets, err := h.db.GetMarkets(isNew, isVip, duration)
+	markets, err := h.db.GetMarkets(r.Context(), isNew, isVip, duration)
 	fmt.Println(err)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
@@ -83,7 +83,7 @@ func (h *Handler) getMarketProducts(w http.ResponseWriter, r *http.Request) {
 		limit = 10
 	}
 
-	products, err := h.db.GetMarketProducts(claims.MarketID, page, limit)
+	products, err := h.db.GetMarketProducts(r.Context(), claims.MarketID, page, limit)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -207,7 +207,7 @@ func (h *Handler)  getAllProducts(w http.ResponseWriter, r *http.Request) {
 		isNew = false
 	}
 
-	products, err := h.db.GetPaginatedProducts(categoryID, duration, page, limit, search, random, startPrice, endPrice, sort, hasDiscount, isNew)
+	products, err := h.db.GetPaginatedProducts(r.Context(), categoryID, duration, page, limit, search, random, startPrice, endPrice, sort, hasDiscount, isNew)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -363,7 +363,7 @@ func (h *Handler) getMarketByIDALL(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	market, products, totalCount, err := h.db.GetMarketByID(marketID, page, limit)
+	market, products, totalCount, err := h.db.GetMarketByID(r.Context(),marketID, page, limit)
 	if err != nil {
 		if err.Error() == "market not found" {
 			respondError(w, http.StatusNotFound, err.Error())
