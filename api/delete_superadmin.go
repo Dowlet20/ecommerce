@@ -1,17 +1,17 @@
 package api
 
 import (
-
-	"net/http"
 	"Dowlet_projects/ecommerce/models"
-	"strconv"
-	"github.com/gorilla/mux"
-	"strings"
 	"fmt"
+	"log"
+	"net/http"
 	"os"
 	"path/filepath"
-	//"Dowlet_projects/ecommerce/services"
+	"strconv"
+	"strings"
 
+	"github.com/gorilla/mux"
+	//"Dowlet_projects/ecommerce/services"
 )
 
 // deleteMarket deletes a market
@@ -91,7 +91,6 @@ func (h *Handler) deleteCategory(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]string{"message": "Category and thumbnail deleted successfully"})
 }
 
-
 // deleteBanner deletes a banner and its thumbnail
 // @Summary Delete a banner
 // @Description Deletes a banner by ID and removes its thumbnail image. Requires superadmin JWT authentication.
@@ -101,48 +100,82 @@ func (h *Handler) deleteCategory(w http.ResponseWriter, r *http.Request) {
 // @Param id path integer true "Banner ID"
 // @Router /api/superadmin/banners/{id} [delete]
 func (h *Handler) deleteBanner(w http.ResponseWriter, r *http.Request) {
-	claims, ok := r.Context().Value("claims").(*models.Claims)
-	if !ok || claims.Role != "superadmin" {
-		if !ok {
-			respondError(w, http.StatusUnauthorized, "Unauthorized")
-		} else {
-			respondError(w, http.StatusForbidden, "Forbidden")
-		}
-		return
-	}
+    // Verify superadmin
+    claims, ok := r.Context().Value("claims").(*models.Claims)
+    if !ok || claims.Role != "superadmin" {
+        if !ok {
+            respondError(w, http.StatusUnauthorized, "Unauthorized")
+            return
+        }
+        respondError(w, http.StatusForbidden, "Forbidden")
+        return
+    }
 
-	// Get banner ID from URL
-	vars := mux.Vars(r)
-	bannerIDStr := vars["id"]
-	bannerID, err := strconv.Atoi(bannerIDStr)
-	if err != nil || bannerID < 1 {
-		respondError(w, http.StatusBadRequest, "Invalid banner ID")
-		return
-	}
+    // Get banner ID from URL
+    vars := mux.Vars(r)
+    bannerIDStr, ok := vars["id"]
+    if !ok {
+        respondError(w, http.StatusBadRequest, "Missing banner ID")
+        return
+    }
+    bannerID, err := strconv.Atoi(bannerIDStr)
+    if err != nil || bannerID < 1 {
+        respondError(w, http.StatusBadRequest, "Invalid banner ID")
+        return
+    }
 
-	// Delete banner and get thumbnail URL
-	thumbnailURL, err := h.db.DeleteBanner(bannerID)
-	if err != nil {
-		if err.Error() == "banner not found" {
-			respondError(w, http.StatusNotFound, err.Error())
-			return
-		}
-		respondError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
+    // Delete banner and get thumbnail URL
+    thumbnailURL, err := h.db.DeleteBanner(r.Context(), bannerID)
+    if err != nil {
+        if err.Error() == "banner not found" {
+            respondError(w, http.StatusNotFound, err.Error())
+            return
+        }
+        respondError(w, http.StatusInternalServerError, err.Error())
+        return
+    }
 
-	// Delete thumbnail file if it exists
-	if thumbnailURL != "" {
-		filePath := filepath.Join(".", thumbnailURL)
-		if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
-			respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to delete thumbnail: %v", err))
-			return
-		}
-	}
+    // Get upload directory
+    uploadDir := os.Getenv("UPLOAD_DIR")
+    if uploadDir == "" {
+        uploadDir = "./Uploads/banners"
+    }
 
-	respondJSON(w, http.StatusOK, map[string]string{
-		"message": "Banner deleted successfully",
-	})
+    // Ensure upload directory exists
+    if _, err := os.Stat(uploadDir); os.IsNotExist(err) {
+        log.Printf("Upload directory does not exist: %s", uploadDir)
+        respondJSON(w, http.StatusOK, map[string]string{
+            "message": "Banner deleted successfully, but upload directory not found",
+        })
+        return
+    }
+
+    // Delete thumbnail file if it exists
+    if thumbnailURL != "" {
+        // Extract base file name to prevent path traversal
+        fileName := filepath.Base(thumbnailURL)
+        filePath := filepath.Join(uploadDir, fileName)
+
+        // Check if file exists
+        if _, err := os.Stat(filePath); err == nil {
+            if err := os.Remove(filePath); err != nil {
+                log.Printf("Failed to delete thumbnail at %s: %v", filePath, err)
+                respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to delete thumbnail: %v", err))
+                return
+            }
+            log.Printf("Deleted thumbnail: %s", filePath)
+        } else if !os.IsNotExist(err) {
+            log.Printf("Error checking thumbnail at %s: %v", filePath, err)
+            respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to check thumbnail: %v", err))
+            return
+        } else {
+            log.Printf("Thumbnail does not exist: %s", filePath)
+        }
+    }
+
+    respondJSON(w, http.StatusOK, map[string]string{
+        "message": "Banner deleted successfully",
+    })
 }
 
 
@@ -232,4 +265,48 @@ func (h *Handler) deleteMarketMessage(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]string{
 		"message": "Market message deleted successfully",
 	})
+}
+
+// deleteUser deletes a user by ID for superadmin
+// @Summary     Delete a user
+// @Description Deletes a user by ID. Requires superadmin authentication.
+// @Tags        Superadmin
+// @Param       id path integer true "User ID"
+// @Security    BearerAuth
+// @Router      /api/superadmin/users/{id} [delete]
+func (h *Handler) deleteUser(w http.ResponseWriter, r *http.Request) {
+    // Verify superadmin
+    claims, ok := r.Context().Value("claims").(*models.Claims)
+    if !ok || claims.Role != "superadmin" {
+        respondError(w, http.StatusUnauthorized, "Unauthorized")
+        return
+    }
+
+    // Extract user ID from URL
+    vars := mux.Vars(r)
+    userIDStr, ok := vars["id"]
+    if !ok {
+        respondError(w, http.StatusBadRequest, "Missing user ID")
+        return
+    }
+
+    userID, err := strconv.Atoi(userIDStr)
+    if err != nil || userID < 1 {
+        respondError(w, http.StatusBadRequest, "Invalid user ID")
+        return
+    }
+
+    // Delete user
+    err = h.db.DeleteUser(r.Context(), userID)
+    if err != nil {
+        if err.Error() == "user not found" {
+            respondError(w, http.StatusNotFound, "User not found")
+            return
+        }
+        respondError(w, http.StatusInternalServerError, err.Error())
+        return
+    }
+
+    // Return 204 No Content
+    w.WriteHeader(http.StatusNoContent)
 }

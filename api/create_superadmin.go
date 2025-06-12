@@ -104,7 +104,7 @@ func (h *Handler) createMarket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	createdUsername, marketID, err := h.db.CreateMarket(name, name_ru, location, location_ru, thumbnailURL, phone, password, deliveryPrice)
+	createdUsername, marketID, err := h.db.CreateMarket(r.Context(), name, name_ru, location, location_ru, thumbnailURL, phone, password, deliveryPrice)
 	if err != nil {
 		if err.Error() == "username or phone already exists" {
 			respondError(w, http.StatusConflict, err.Error())

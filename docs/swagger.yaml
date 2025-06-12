@@ -42,25 +42,6 @@ definitions:
       phone:
         type: string
     type: object
-  api.ProductRequest:
-    properties:
-      category_id:
-        type: integer
-      description:
-        type: string
-      description_ru:
-        type: string
-      discount:
-        type: number
-      is_active:
-        type: boolean
-      name:
-        type: string
-      name_ru:
-        type: string
-      price:
-        type: number
-    type: object
   api.RegisterRequest:
     properties:
       full_name:
@@ -177,6 +158,11 @@ definitions:
         type: number
       size:
         type: string
+    type: object
+  models.UpdateUserVerifiedRequest:
+    properties:
+      verified:
+        type: boolean
     type: object
 host: 192.168.55.42:8080
 info:
@@ -665,20 +651,54 @@ paths:
       - Products
     put:
       consumes:
-      - application/json
-      description: Updates a product for the market admin's market. Requires JWT authentication.
+      - multipart/form-data
+      description: Updates a product for the market admin's market, including its
+        thumbnail image. Requires JWT authentication.
       parameters:
       - description: Product ID
         in: path
         name: product_id
         required: true
         type: string
-      - description: Product details
-        in: body
-        name: product
+      - description: Category ID
+        in: formData
+        name: category_id
         required: true
-        schema:
-          $ref: '#/definitions/api.ProductRequest'
+        type: integer
+      - description: Product name
+        in: formData
+        name: name
+        required: true
+        type: string
+      - description: Product name (Russian)
+        in: formData
+        name: name_ru
+        type: string
+      - description: Product price
+        in: formData
+        name: price
+        required: true
+        type: number
+      - description: Discount percentage
+        in: formData
+        name: discount
+        type: number
+      - description: Product description
+        in: formData
+        name: description
+        type: string
+      - description: Product description (Russian)
+        in: formData
+        name: description_ru
+        type: string
+      - description: Product active status
+        in: formData
+        name: is_active
+        type: boolean
+      - description: Thumbnail image
+        in: formData
+        name: thumbnail
+        type: file
       produces:
       - application/json
       responses: {}
@@ -1098,6 +1118,61 @@ paths:
       summary: Delete a market
       tags:
       - Markets
+    put:
+      consumes:
+      - multipart/form-data
+      description: Updates a market by ID, including its thumbnail image. Requires
+        superadmin JWT authentication.
+      parameters:
+      - description: Market ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Market password
+        in: formData
+        name: password
+        type: string
+      - description: Delivery price
+        in: formData
+        name: delivery_price
+        type: number
+      - description: Phone number
+        in: formData
+        name: phone
+        type: string
+      - description: Market name
+        in: formData
+        name: name
+        type: string
+      - description: Market name (Russian)
+        in: formData
+        name: name_ru
+        type: string
+      - description: Location
+        in: formData
+        name: location
+        type: string
+      - description: Location (Russian)
+        in: formData
+        name: location_ru
+        type: string
+      - description: VIP status
+        in: formData
+        name: isVIP
+        type: boolean
+      - description: Thumbnail image
+        in: formData
+        name: image
+        type: file
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Update a market
+      tags:
+      - Markets
   /api/superadmin/user-messages:
     get:
       description: Retrieves all messages sent by users to superadmin. Requires superadmin
@@ -1128,6 +1203,71 @@ paths:
       summary: Delete a user message
       tags:
       - User Messages
+  /api/superadmin/users:
+    get:
+      description: Retrieves a paginated list of users with optional search by full_name,
+        phone, or ID. Requires superadmin authentication.
+      parameters:
+      - description: 'Page number (default: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Items per page (default: 10)'
+        in: query
+        name: limit
+        type: integer
+      - description: Search term to filter by full_name, phone, or ID
+        in: query
+        name: search
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Get all users
+      tags:
+      - Superadmin
+  /api/superadmin/users/{id}:
+    delete:
+      description: Deletes a user by ID. Requires superadmin authentication.
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Delete a user
+      tags:
+      - Superadmin
+    put:
+      consumes:
+      - application/json
+      description: Updates the verified status of a user by ID. Requires superadmin
+        authentication.
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Verified status
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateUserVerifiedRequest'
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Update user verified status
+      tags:
+      - Superadmin
   /api/user-orders:
     get:
       description: Retrieves all orders for the market admin's market, optionally

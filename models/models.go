@@ -340,3 +340,9 @@ type MarketMessage struct {
 	Message  string `json:"message"`
 }
 
+
+
+// UpdateUserVerifiedRequest represents the request body for updating a user's verified status
+type UpdateUserVerifiedRequest struct {
+    Verified bool `json:"verified"`
+}

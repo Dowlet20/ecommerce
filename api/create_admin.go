@@ -105,8 +105,8 @@ func (h *Handler) createProduct(w http.ResponseWriter, r *http.Request) {
 		// Generate unique filename
 		timestamp := time.Now().UnixNano()
 		filename = fmt.Sprintf("%d-%s", timestamp, strings.ReplaceAll(fileHeader.Filename, " ", "_"))
-		filePath = filepath.Join("uploads", "products", "main", filename)
-		urlPath = fmt.Sprintf("/uploads/products/main/%s", filename)
+		filePath = filepath.Join("uploads", "products",  filename)
+		urlPath = fmt.Sprintf("/uploads/products/%s", filename)
 
 		// Create directories if they don't exist
 		if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
@@ -194,7 +194,7 @@ func (h *Handler) addProductThumbnails(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create uploads directory
-	if err := os.MkdirAll("uploads/products/"+id, 0755); err != nil {
+	if err := os.MkdirAll("uploads/products", 0755); err != nil {
 		respondError(w, http.StatusInternalServerError, "Error creating directory")
 		return
 	}
@@ -209,7 +209,7 @@ func (h *Handler) addProductThumbnails(w http.ResponseWriter, r *http.Request) {
 		defer file.Close()
 
 		filename := fmt.Sprintf("%d-%s", time.Now().UnixNano(), fileHeader.Filename)
-		filePath := filepath.Join("uploads/products/"+id, filename)
+		filePath := filepath.Join("uploads/products", filename)
 		out, err := os.Create(filePath)
 		if err != nil {
 			respondError(w, http.StatusInternalServerError, "Error saving file")
@@ -229,7 +229,7 @@ func (h *Handler) addProductThumbnails(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusBadRequest, "Invalid product ID")
 			return
 		}
-		ImageURL := filepath.Join("/uploads/products/"+id, filename)
+		ImageURL := filepath.Join("/uploads/products", filename)
 		ImageURL = strings.ReplaceAll(ImageURL, string(filepath.Separator), "/")
 
 		thumbnails = append(thumbnails, services.ThumbnailData{

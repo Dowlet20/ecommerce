@@ -1,13 +1,20 @@
 package api
 
 import (
-	"net/http"
 	"Dowlet_projects/ecommerce/models"
-	"strconv"
-	"github.com/gorilla/mux"
 	"encoding/json"
-)
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
 
+	"github.com/gorilla/mux"
+)
 
 // updateCartCountBySizeID updates the count of a cart entry for the authenticated user based on size_id
 // @Summary Update cart entry count
@@ -168,4 +175,235 @@ func (h *Handler) updateProfile(w http.ResponseWriter, r *http.Request) {
 		"message": "Profile updated successfully",
 		"profile": updatedProfile,
 	})
+}
+
+
+// updateUserVerified updates a user's verified status for superadmin
+// @Summary     Update user verified status
+// @Description Updates the verified status of a user by ID. Requires superadmin authentication.
+// @Tags        Superadmin
+// @Accept      json
+// @Produce     json
+// @Param       id   path integer true "User ID"
+// @Param       body body models.UpdateUserVerifiedRequest true "Verified status"
+// @Security    BearerAuth
+// @Router      /api/superadmin/users/{id} [put]
+func (h *Handler) updateUserVerified(w http.ResponseWriter, r *http.Request) {
+    // Verify superadmin
+    claims, ok := r.Context().Value("claims").(*models.Claims)
+    if !ok || claims.Role != "superadmin" {
+        respondError(w, http.StatusUnauthorized, "Unauthorized")
+        return
+    }
+
+    // Extract user ID from URL
+    vars := mux.Vars(r)
+    userIDStr, ok := vars["id"]
+    if !ok {
+        respondError(w, http.StatusBadRequest, "Missing user ID")
+        return
+    }
+
+    userID, err := strconv.Atoi(userIDStr)
+    if err != nil || userID < 1 {
+        respondError(w, http.StatusBadRequest, "Invalid user ID")
+        return
+    }
+
+    // Parse request body
+    var req models.UpdateUserVerifiedRequest
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        respondError(w, http.StatusBadRequest, "Invalid request body")
+        return
+    }
+
+    // Update verified status
+    err = h.db.UpdateUserVerified(r.Context(), userID, req.Verified)
+    if err != nil {
+        if err.Error() == "user not found" {
+            respondError(w, http.StatusNotFound, "User not found")
+            return
+        }
+        respondError(w, http.StatusInternalServerError, err.Error())
+        return
+    }
+
+    // Fetch updated user to return in response
+    updatedUser, err := h.db.GetUsers(r.Context(), 1, 1, "") // Temporary: fetch user directly
+    if err != nil || len(updatedUser) == 0 {
+        respondError(w, http.StatusInternalServerError, "Failed to fetch updated user")
+        return
+    }
+
+    respondJSON(w, http.StatusOK, updatedUser[0])
+}
+
+
+// updateMarket updates a market
+// @Summary Update a market
+// @Description Updates a market by ID, including its thumbnail image. Requires superadmin JWT authentication.
+// @Tags Markets
+// @Accept multipart/form-data
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "Market ID"
+// @Param password formData string false "Market password"
+// @Param delivery_price formData number false "Delivery price"
+// @Param phone formData string false "Phone number"
+// @Param name formData string false "Market name"
+// @Param name_ru formData string false "Market name (Russian)"
+// @Param location formData string false "Location"
+// @Param location_ru formData string false "Location (Russian)"
+// @Param isVIP formData boolean false "VIP status"
+// @Param image formData file false "Thumbnail image"
+// @Router /api/superadmin/markets/{id} [put]
+func (h *Handler) updateMarket(w http.ResponseWriter, r *http.Request) {
+    // Verify superadmin
+    claims, ok := r.Context().Value("claims").(*models.Claims)
+    if !ok || claims.Role != "superadmin" {
+        if !ok {
+            respondError(w, http.StatusUnauthorized, "Unauthorized")
+        } else {
+            respondError(w, http.StatusForbidden, "Forbidden")
+        }
+        return
+    }
+
+    // Get market ID from URL
+    vars := mux.Vars(r)
+    marketIDStr, ok := vars["id"]
+    if !ok {
+        respondError(w, http.StatusBadRequest, "Missing market ID")
+        return
+    }
+    marketID, err := strconv.Atoi(marketIDStr)
+    if err != nil || marketID < 1 {
+        respondError(w, http.StatusBadRequest, "Invalid market ID")
+        return
+    }
+
+    // Parse multipart form (max 10MB)
+    if err := r.ParseMultipartForm(10 << 20); err != nil {
+        respondError(w, http.StatusBadRequest, "Error parsing form")
+        return
+    }
+
+    // Parse form fields
+    password := r.FormValue("password")
+    deliveryPriceStr := r.FormValue("delivery_price")
+    phone := r.FormValue("phone")
+    name := r.FormValue("name")
+    nameRu := r.FormValue("name_ru")
+    location := r.FormValue("location")
+    locationRu := r.FormValue("location_ru")
+    isVIPStr := r.FormValue("isVIP")
+
+    // Validate and parse numeric/boolean fields
+    var deliveryPrice *float64
+    if deliveryPriceStr != "" {
+        dp, err := strconv.ParseFloat(deliveryPriceStr, 64)
+        if err != nil || dp < 0 {
+            respondError(w, http.StatusBadRequest, "Invalid delivery price")
+            return
+        }
+        deliveryPrice = &dp
+    }
+    var isVIP *bool
+    if isVIPStr != "" {
+        vip, err := strconv.ParseBool(isVIPStr)
+        if err != nil {
+            respondError(w, http.StatusBadRequest, "Invalid isVIP value")
+            return
+        }
+        isVIP = &vip
+    }
+
+    // Validate phone if provided
+    if phone != "" {
+        if len(phone) > 20 || !strings.HasPrefix(phone, "+") {
+            respondError(w, http.StatusBadRequest, "Invalid phone format")
+            return
+        }
+    }
+
+    // Get upload directory
+    uploadDir := os.Getenv("UPLOAD_DIR")
+    if uploadDir == "" {
+        uploadDir = "./Uploads/markets"
+    }
+
+    // Ensure upload directory exists
+    if err := os.MkdirAll(uploadDir, 0755); err != nil {
+        log.Printf("Failed to create upload directory %s: %v", uploadDir, err)
+        respondError(w, http.StatusInternalServerError, "Failed to create upload directory")
+        return
+    }
+
+    // Handle file upload
+    var imageURL string
+    file, handler, err := r.FormFile("image")
+    if err == nil {
+        defer file.Close()
+        // Validate file type
+        ext := strings.ToLower(filepath.Ext(handler.Filename))
+        if ext != ".jpg" && ext != ".jpeg" && ext != ".png" {
+            respondError(w, http.StatusBadRequest, "Invalid image format; use JPG or PNG")
+            return
+        }
+        // Generate unique file name
+        imageURL = fmt.Sprintf("%d-%s", time.Now().UnixNano(), handler.Filename)
+        filePath := filepath.Join(uploadDir, imageURL)
+
+        // Save file
+        f, err := os.Create(filePath)
+        if err != nil {
+            log.Printf("Failed to create file %s: %v", filePath, err)
+            respondError(w, http.StatusInternalServerError, "Failed to save image")
+            return
+        }
+        defer f.Close()
+        if _, err := io.Copy(f, file); err != nil {
+            log.Printf("Failed to write file %s: %v", filePath, err)
+            respondError(w, http.StatusInternalServerError, "Failed to save image")
+            return
+        }
+        log.Printf("Saved new image: %s", filePath)
+    } else if err != http.ErrMissingFile {
+        respondError(w, http.StatusBadRequest, "Error processing image")
+        return
+    }
+
+    // Update market and get old thumbnail URL
+    oldThumbnailURL, newThumbnailURL, err := h.db.UpdateMarket(r.Context(), marketID, password, deliveryPrice, phone, name, nameRu, location, locationRu, isVIP, imageURL)
+    if err != nil {
+        if err.Error() == "market not found" {
+            respondError(w, http.StatusNotFound, err.Error())
+            return
+        }
+        respondError(w, http.StatusInternalServerError, err.Error())
+        return
+    }
+
+    // Delete old thumbnail file if a new image was uploaded
+    if oldThumbnailURL != "" && imageURL != "" {
+        fileName := filepath.Base(oldThumbnailURL)
+        filePath := filepath.Join(uploadDir, fileName)
+        if _, err := os.Stat(filePath); err == nil {
+            if err := os.Remove(filePath); err != nil {
+                log.Printf("Failed to delete old thumbnail at %s: %v", filePath, err)
+                respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to delete old thumbnail: %v", err))
+                return
+            }
+            log.Printf("Deleted old thumbnail: %s", filePath)
+        } else if !os.IsNotExist(err) {
+            log.Printf("Error checking old thumbnail at %s: %v", filePath, err)
+            respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to check old thumbnail: %v", err))
+            return
+        }
+    }
+
+    respondJSON(w, http.StatusOK, map[string]string{
+        "message": "Market updated successfully",
+        "thumbnail_url":newThumbnailURL,
+    })
 }

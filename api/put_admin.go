@@ -1,71 +1,185 @@
 package api
 
 import (
-
-	"net/http"
 	"Dowlet_projects/ecommerce/models"
+	"log"
+	"net/http"
+
 	//"Dowlet_projects/ecommerce/services"
-	"github.com/gorilla/mux"
-	"strconv"
-	"fmt"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"time"
+	"strconv"
 	"strings"
-
+	"time"
+	"github.com/gorilla/mux"
 )
+
 
 // updateProduct updates a product
 // @Summary Update a product
-// @Description Updates a product for the market admin's market. Requires JWT authentication.
+// @Description Updates a product for the market admin's market, including its thumbnail image. Requires JWT authentication.
 // @Tags Products
-// @Accept json
+// @Accept multipart/form-data
 // @Produce json
 // @Security BearerAuth
 // @Param product_id path string true "Product ID"
-// @Param product body ProductRequest true "Product details"
+// @Param category_id formData integer true "Category ID"
+// @Param name formData string true "Product name"
+// @Param name_ru formData string false "Product name (Russian)"
+// @Param price formData number true "Product price"
+// @Param discount formData number false "Discount percentage"
+// @Param description formData string false "Product description"
+// @Param description_ru formData string false "Product description (Russian)"
+// @Param is_active formData boolean false "Product active status"
+// @Param thumbnail formData file false "Thumbnail image"
 // @Router /api/market/products/{product_id} [put]
 func (h *Handler) updateProduct(w http.ResponseWriter, r *http.Request) {
-	claims, ok := r.Context().Value("claims").(*models.Claims)
-	if !ok || claims.MarketID == 0 || claims.Role != "market_admin" {
-		respondError(w, http.StatusUnauthorized, "Unauthorized")
-		return
-	}
+    // Verify market admin
+    claims, ok := r.Context().Value("claims").(*models.Claims)
+    if !ok || claims.MarketID == 0 || claims.Role != "market_admin" {
+        respondError(w, http.StatusUnauthorized, "Unauthorized")
+        return
+    }
 
-	vars := mux.Vars(r)
-	productIDStr := vars["product_id"]
-	fmt.Println(productIDStr)
-	productID, err := strconv.Atoi(productIDStr)
-	if err != nil {
-		fmt.Println(err)
-		respondError(w, http.StatusBadRequest, "Invalid product ID")
-		return
-	}
+    // Get product ID from URL
+    vars := mux.Vars(r)
+    productIDStr, ok := vars["product_id"]
+    if !ok {
+        respondError(w, http.StatusBadRequest, "Missing product ID")
+        return
+    }
+    productID, err := strconv.Atoi(productIDStr)
+    if err != nil || productID < 1 {
+        respondError(w, http.StatusBadRequest, "Invalid product ID")
+        return
+    }
 
-	var req ProductRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "Error parsing JSON body")
-		return
-	}
+    // Parse multipart form (max 10MB)
+    if err := r.ParseMultipartForm(10 << 20); err != nil {
+        respondError(w, http.StatusBadRequest, "Error parsing form")
+        return
+    }
 
-	if req.Name == "" || req.Price == 0 {
-		respondError(w, http.StatusBadRequest, "Missing required fields")
-		return
-	}
+    // Parse form fields
+    categoryIDStr := r.FormValue("category_id")
+    name := r.FormValue("name")
+    nameRu := r.FormValue("name_ru")
+    priceStr := r.FormValue("price")
+    discountStr := r.FormValue("discount")
+    description := r.FormValue("description")
+    descriptionRu := r.FormValue("description_ru")
+    isActiveStr := r.FormValue("is_active")
 
-	err = h.db.UpdateProduct(r.Context(), claims.MarketID, productID, req.Name, req.NameRu, req.Price, req.Discount, req.Description, req.DescriptionRu)
-	if err != nil {
-		if err.Error() == "product not found or unauthorized" {
-			respondError(w, http.StatusNotFound, err.Error())
-			return
-		}
-		respondError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
+    // Validate required fields
+    if name == "" || priceStr == "" {
+        respondError(w, http.StatusBadRequest, "Missing required fields: name and price")
+        return
+    }
 
-	respondJSON(w, http.StatusOK, map[string]string{"message": "Product updated successfully"})
+    // Parse numeric fields
+    categoryID, err := strconv.Atoi(categoryIDStr)
+    if err != nil || categoryID < 1 {
+        respondError(w, http.StatusBadRequest, "Invalid category ID")
+        return
+    }
+    price, err := strconv.ParseFloat(priceStr, 64)
+    if err != nil || price <= 0 {
+        respondError(w, http.StatusBadRequest, "Invalid price")
+        return
+    }
+    var discount float64
+    if discountStr != "" {
+        discount, err = strconv.ParseFloat(discountStr, 64)
+        if err != nil || discount < 0 {
+            respondError(w, http.StatusBadRequest, "Invalid discount")
+            return
+        }
+    }
+    isActive := false
+    if isActiveStr != "" {
+        isActive, err = strconv.ParseBool(isActiveStr)
+        if err != nil {
+            respondError(w, http.StatusBadRequest, "Invalid is_active value")
+            return
+        }
+    }
+
+    // Get upload directory
+    uploadDir := os.Getenv("UPLOAD_DIR")
+    if uploadDir == "" {
+        uploadDir = "./Uploads/products"
+    }
+
+    // Ensure upload directory exists
+    if err := os.MkdirAll(uploadDir, 0755); err != nil {
+        log.Printf("Failed to create upload directory %s: %v", uploadDir, err)
+        respondError(w, http.StatusInternalServerError, "Failed to create upload directory")
+        return
+    }
+
+    // Handle file upload
+    var imageURL string
+    file, handler, err := r.FormFile("thumbnail")
+    if err == nil {
+        defer file.Close()
+        // Generate unique file name
+        //ext := filepath.Ext(handler.Filename)
+		imageURL = fmt.Sprintf("%d-%s", time.Now().UnixNano(), handler.Filename)
+        //imageURL = fmt.Sprintf("%d-%d%s", productID, time.Now().UnixNano(), ext)
+        filePath := filepath.Join(uploadDir, imageURL)
+
+        // Save file
+        f, err := os.Create(filePath)
+        if err != nil {
+            log.Printf("Failed to create file %s: %v", filePath, err)
+            respondError(w, http.StatusInternalServerError, "Failed to save image")
+            return
+        }
+        defer f.Close()
+        if _, err := io.Copy(f, file); err != nil {
+            log.Printf("Failed to write file %s: %v", filePath, err)
+            respondError(w, http.StatusInternalServerError, "Failed to save image")
+            return
+        }
+        log.Printf("Saved new image: %s", filePath)
+    } else if err != http.ErrMissingFile {
+        respondError(w, http.StatusBadRequest, "Error processing image")
+        return
+    }
+
+    // Update product and get old image URL
+    oldImageURL, err := h.db.UpdateProduct(r.Context(), claims.MarketID, productID, categoryID, name, nameRu, price, discount, description, descriptionRu, isActive, imageURL)
+    if err != nil {
+        if err.Error() == "product not found or unauthorized" || err.Error() == "thumbnail not found" {
+            respondError(w, http.StatusNotFound, err.Error())
+            return
+        }
+        respondError(w, http.StatusInternalServerError, err.Error())
+        return
+    }
+
+    // Delete old thumbnail file if it exists and a new image was uploaded
+    if oldImageURL != "" && imageURL != "" {
+        fileName := filepath.Base(oldImageURL)
+        filePath := filepath.Join(uploadDir, fileName)
+        if _, err := os.Stat(filePath); err == nil {
+            if err := os.Remove(filePath); err != nil {
+                log.Printf("Failed to delete old thumbnail at %s: %v", filePath, err)
+                respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to delete old thumbnail: %v", err))
+                return
+            }
+            log.Printf("Deleted old thumbnail: %s", filePath)
+        } else if !os.IsNotExist(err) {
+            log.Printf("Error checking old thumbnail at %s: %v", filePath, err)
+            respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to check old thumbnail: %v", err))
+            return
+        }
+    }
+
+    respondJSON(w, http.StatusOK, map[string]string{"message": "Product updated successfully"})
 }
 
 

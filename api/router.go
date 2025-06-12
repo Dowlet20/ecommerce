@@ -41,7 +41,11 @@ func (h *Handler) SetupRoutes(router *mux.Router) {
 	superadmin.HandleFunc("/user-messages/{id}", h.deleteUserMessage).Methods("DELETE", "OPTIONS")
 	superadmin.HandleFunc("/market-messages", h.getMarketMessages).Methods("GET", "OPTIONS")
 	superadmin.HandleFunc("/market-messages/{id}", h.deleteMarketMessage).Methods("DELETE", "OPTIONS")
-	
+	superadmin.HandleFunc("/users", h.getUsers).Methods("GET", "OPTIONS")
+	superadmin.HandleFunc("/users/{id}", h.deleteUser).Methods("DELETE", "OPTIONS")
+	superadmin.HandleFunc("/users/{id}", h.updateUserVerified).Methods("PUT")
+	superadmin.HandleFunc("/markets/{id}", h.updateMarket).Methods("PUT", "OPTIONS")
+
 	// Market admin routes
 	marketAdmin := router.PathPrefix("/api/market").Subrouter()
 	marketAdmin.Use(h.authMiddleware)

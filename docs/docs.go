@@ -716,9 +716,9 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Updates a product for the market admin's market. Requires JWT authentication.",
+                "description": "Updates a product for the market admin's market, including its thumbnail image. Requires JWT authentication.",
                 "consumes": [
-                    "application/json"
+                    "multipart/form-data"
                 ],
                 "produces": [
                     "application/json"
@@ -736,13 +736,61 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "Product details",
-                        "name": "product",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/api.ProductRequest"
-                        }
+                        "type": "integer",
+                        "description": "Category ID",
+                        "name": "category_id",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Product name",
+                        "name": "name",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Product name (Russian)",
+                        "name": "name_ru",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "number",
+                        "description": "Product price",
+                        "name": "price",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "number",
+                        "description": "Discount percentage",
+                        "name": "discount",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Product description",
+                        "name": "description",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Product description (Russian)",
+                        "name": "description_ru",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Product active status",
+                        "name": "is_active",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "file",
+                        "description": "Thumbnail image",
+                        "name": "thumbnail",
+                        "in": "formData"
                     }
                 ],
                 "responses": {}
@@ -1364,6 +1412,88 @@ const docTemplate = `{
             }
         },
         "/api/superadmin/markets/{id}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Updates a market by ID, including its thumbnail image. Requires superadmin JWT authentication.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Markets"
+                ],
+                "summary": "Update a market",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Market ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Market password",
+                        "name": "password",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "number",
+                        "description": "Delivery price",
+                        "name": "delivery_price",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Phone number",
+                        "name": "phone",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Market name",
+                        "name": "name",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Market name (Russian)",
+                        "name": "name_ru",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Location",
+                        "name": "location",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Location (Russian)",
+                        "name": "location_ru",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "VIP status",
+                        "name": "isVIP",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "file",
+                        "description": "Thumbnail image",
+                        "name": "image",
+                        "in": "formData"
+                    }
+                ],
+                "responses": {}
+            },
             "delete": {
                 "security": [
                     {
@@ -1427,6 +1557,105 @@ const docTemplate = `{
                     {
                         "type": "integer",
                         "description": "Message ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/api/superadmin/users": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieves a paginated list of users with optional search by full_name, phone, or ID. Requires superadmin authentication.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Superadmin"
+                ],
+                "summary": "Get all users",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Page number (default: 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Items per page (default: 10)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Search term to filter by full_name, phone, or ID",
+                        "name": "search",
+                        "in": "query"
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/api/superadmin/users/{id}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Updates the verified status of a user by ID. Requires superadmin authentication.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Superadmin"
+                ],
+                "summary": "Update user verified status",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "User ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Verified status",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateUserVerifiedRequest"
+                        }
+                    }
+                ],
+                "responses": {}
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Deletes a user by ID. Requires superadmin authentication.",
+                "tags": [
+                    "Superadmin"
+                ],
+                "summary": "Delete a user",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "User ID",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -1928,35 +2157,6 @@ const docTemplate = `{
                 }
             }
         },
-        "api.ProductRequest": {
-            "type": "object",
-            "properties": {
-                "category_id": {
-                    "type": "integer"
-                },
-                "description": {
-                    "type": "string"
-                },
-                "description_ru": {
-                    "type": "string"
-                },
-                "discount": {
-                    "type": "number"
-                },
-                "is_active": {
-                    "type": "boolean"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "name_ru": {
-                    "type": "string"
-                },
-                "price": {
-                    "type": "number"
-                }
-            }
-        },
         "api.RegisterRequest": {
             "type": "object",
             "required": [
@@ -2133,6 +2333,14 @@ const docTemplate = `{
                 },
                 "size": {
                     "type": "string"
+                }
+            }
+        },
+        "models.UpdateUserVerifiedRequest": {
+            "type": "object",
+            "properties": {
+                "verified": {
+                    "type": "boolean"
                 }
             }
         }
