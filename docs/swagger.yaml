@@ -428,6 +428,10 @@ paths:
         in: query
         name: page
         type: integer
+      - description: Page number
+        in: query
+        name: category_id
+        type: string
       produces:
       - application/json
       responses: {}
@@ -498,14 +502,30 @@ paths:
       summary: Get market admin orders
       tags:
       - Orders
-  /api/market/orders/{cart_order_id}:
-    get:
-      description: Retrieves detailed order information for a specific cart_order_id.
-        Requires market admin JWT authentication.
+  /api/market/orders/{order_id}:
+    delete:
+      description: Deletes a order by its ID. Requires JWT authentication.
       parameters:
-      - description: Cart Order ID
+      - description: Order ID
         in: path
-        name: cart_order_id
+        name: order_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Delete a order by ID
+      tags:
+      - Orders
+    get:
+      description: Retrieves detailed order information for a specific order_id. Requires
+        market admin JWT authentication.
+      parameters:
+      - description: Order ID
+        in: path
+        name: order_id
         required: true
         type: string
       produces:
@@ -516,7 +536,6 @@ paths:
       summary: Get market admin order by ID
       tags:
       - Orders
-  /api/market/orders/{order_id}:
     put:
       consumes:
       - application/json
@@ -1285,6 +1304,25 @@ paths:
       summary: Get market admin orders
       tags:
       - Orders
+  /api/user-orders/{order_id}:
+    put:
+      consumes:
+      - application/json
+      description: Updates the is_active of an order to false
+      parameters:
+      - description: Order ID
+        in: path
+        name: order_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Update order is_active
+      tags:
+      - Orders
   /banners:
     get:
       description: Retrieves all banners with their ID, description, and thumbnail
@@ -1410,6 +1448,10 @@ paths:
       - description: Category ID
         in: query
         name: category_id
+        type: string
+      - description: Market ID
+        in: query
+        name: market_id
         type: string
       - description: 'Duration day for new (default: 7)'
         in: query

@@ -48,17 +48,20 @@ func (h *Handler) updateProduct(w http.ResponseWriter, r *http.Request) {
     vars := mux.Vars(r)
     productIDStr, ok := vars["product_id"]
     if !ok {
+		fmt.Println(ok)
         respondError(w, http.StatusBadRequest, "Missing product ID")
         return
     }
     productID, err := strconv.Atoi(productIDStr)
     if err != nil || productID < 1 {
+		fmt.Println(err)
         respondError(w, http.StatusBadRequest, "Invalid product ID")
         return
     }
 
     // Parse multipart form (max 10MB)
     if err := r.ParseMultipartForm(10 << 20); err != nil {
+		fmt.Println(err)
         respondError(w, http.StatusBadRequest, "Error parsing form")
         return
     }
@@ -75,6 +78,7 @@ func (h *Handler) updateProduct(w http.ResponseWriter, r *http.Request) {
 
     // Validate required fields
     if name == "" || priceStr == "" {
+		fmt.Println("name priceStr")
         respondError(w, http.StatusBadRequest, "Missing required fields: name and price")
         return
     }
@@ -82,11 +86,13 @@ func (h *Handler) updateProduct(w http.ResponseWriter, r *http.Request) {
     // Parse numeric fields
     categoryID, err := strconv.Atoi(categoryIDStr)
     if err != nil || categoryID < 1 {
+		fmt.Println(err)
         respondError(w, http.StatusBadRequest, "Invalid category ID")
         return
     }
     price, err := strconv.ParseFloat(priceStr, 64)
     if err != nil || price <= 0 {
+		fmt.Println(err)
         respondError(w, http.StatusBadRequest, "Invalid price")
         return
     }
@@ -94,6 +100,7 @@ func (h *Handler) updateProduct(w http.ResponseWriter, r *http.Request) {
     if discountStr != "" {
         discount, err = strconv.ParseFloat(discountStr, 64)
         if err != nil || discount < 0 {
+			fmt.Println(err)
             respondError(w, http.StatusBadRequest, "Invalid discount")
             return
         }
@@ -102,6 +109,7 @@ func (h *Handler) updateProduct(w http.ResponseWriter, r *http.Request) {
     if isActiveStr != "" {
         isActive, err = strconv.ParseBool(isActiveStr)
         if err != nil {
+			fmt.Println(err)
             respondError(w, http.StatusBadRequest, "Invalid is_active value")
             return
         }
@@ -115,6 +123,7 @@ func (h *Handler) updateProduct(w http.ResponseWriter, r *http.Request) {
 
     // Ensure upload directory exists
     if err := os.MkdirAll(uploadDir, 0755); err != nil {
+		fmt.Println(err)
         log.Printf("Failed to create upload directory %s: %v", uploadDir, err)
         respondError(w, http.StatusInternalServerError, "Failed to create upload directory")
         return
@@ -124,6 +133,7 @@ func (h *Handler) updateProduct(w http.ResponseWriter, r *http.Request) {
     var imageURL string
     file, handler, err := r.FormFile("thumbnail")
     if err == nil {
+		fmt.Println(err)
         defer file.Close()
         // Generate unique file name
         //ext := filepath.Ext(handler.Filename)
@@ -154,9 +164,11 @@ func (h *Handler) updateProduct(w http.ResponseWriter, r *http.Request) {
     oldImageURL, err := h.db.UpdateProduct(r.Context(), claims.MarketID, productID, categoryID, name, nameRu, price, discount, description, descriptionRu, isActive, imageURL)
     if err != nil {
         if err.Error() == "product not found or unauthorized" || err.Error() == "thumbnail not found" {
-            respondError(w, http.StatusNotFound, err.Error())
+            fmt.Println(err)
+			respondError(w, http.StatusNotFound, err.Error())
             return
         }
+		fmt.Println(err)
         respondError(w, http.StatusInternalServerError, err.Error())
         return
     }
@@ -359,6 +371,54 @@ func (h *Handler) updateOrderStatus(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{
+		"message": "Order status updated successfully",
+	})
+}
+
+
+
+// deleteUserHistory updates the is_active of orders' order
+// @Summary Update order is_active
+// @Description Updates the is_active of an order to false
+// @Tags Orders
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param order_id path integer true "Order ID"
+// @Router /api/user-orders/{order_id} [put]
+func (h *Handler) deleteUserHistory(w http.ResponseWriter, r *http.Request) {
+	claims, ok := r.Context().Value("claims").(*models.Claims)
+	if !ok  || claims.Role != "user" {
+		if !ok {
+			respondError(w, http.StatusUnauthorized, "Unauthorized")
+		} else {
+			respondError(w, http.StatusForbidden, "Forbidden")
+		}
+		return
+	}
+
+	// Get order_id from URL
+	vars := mux.Vars(r)
+	orderIDStr := vars["order_id"]
+	orderID, err := strconv.Atoi(orderIDStr)
+	if err != nil || orderID < 1 {
+		respondError(w, http.StatusBadRequest, "Invalid order ID")
+		return
+	}
+
+
+	// Update order status
+	if err := h.db.DeleteUserHistory(orderID, claims.UserID); err != nil {
+		if err.Error() == "order not found" || err.Error() == "order not found or not associated with this market" {
+			respondError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

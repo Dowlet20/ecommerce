@@ -83,7 +83,7 @@ func (h *Handler) getMarketProducts(w http.ResponseWriter, r *http.Request) {
 		limit = 10
 	}
 
-	products, err := h.db.GetMarketProducts(r.Context(), claims.MarketID, page, limit)
+	products, err := h.db.GetMarketProducts(r.Context(), claims.MarketID, 0, page, limit)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -100,6 +100,7 @@ func (h *Handler) getMarketProducts(w http.ResponseWriter, r *http.Request) {
 // @Tags Products
 // @Produce json
 // @Param category_id query string false "Category ID"
+// @Param market_id query string false "Market ID"
 // @Param duration query integer false "Duration day for new (default: 7)"
 // @Param page query integer false "Page number (default: 1, ignored if random=true)"
 // @Param limit query integer false "Items per page (default: 10, ignored if random=true)"
@@ -113,6 +114,18 @@ func (h *Handler) getMarketProducts(w http.ResponseWriter, r *http.Request) {
 // @Router /products [get]
 func (h *Handler)  getAllProducts(w http.ResponseWriter, r *http.Request) {
 	// Parse query parameters
+	marketIDStr := r.URL.Query().Get("market_id")
+	fmt.Println(marketIDStr)
+	var marketID int
+	if marketIDStr != "" {
+		var err error
+		marketID, err = strconv.Atoi(marketIDStr)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, "Invalid market ID")
+			return
+		}
+	}
+
 	categoryIDStr := r.URL.Query().Get("category_id")
 	var categoryID int
 	if categoryIDStr != "" {
@@ -207,7 +220,7 @@ func (h *Handler)  getAllProducts(w http.ResponseWriter, r *http.Request) {
 		isNew = false
 	}
 
-	products, err := h.db.GetPaginatedProducts(r.Context(), categoryID, duration, page, limit, search, random, startPrice, endPrice, sort, hasDiscount, isNew)
+	products, err := h.db.GetPaginatedProducts(r.Context(), categoryID, marketID, duration, page, limit, search, random, startPrice, endPrice, sort, hasDiscount, isNew)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -363,7 +376,7 @@ func (h *Handler) getMarketByIDALL(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	market, products, totalCount, err := h.db.GetMarketByID(r.Context(),marketID, page, limit)
+	market, products, totalCount, err := h.db.GetMarketByID(r.Context(), marketID, 0, page, limit)
 	if err != nil {
 		if err.Error() == "market not found" {
 			respondError(w, http.StatusNotFound, err.Error())

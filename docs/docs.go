@@ -412,6 +412,12 @@ const docTemplate = `{
                         "description": "Page number (default: 1, min: 1)",
                         "name": "page",
                         "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Page number",
+                        "name": "category_id",
+                        "in": "query"
                     }
                 ],
                 "responses": {}
@@ -512,14 +518,14 @@ const docTemplate = `{
                 "responses": {}
             }
         },
-        "/api/market/orders/{cart_order_id}": {
+        "/api/market/orders/{order_id}": {
             "get": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retrieves detailed order information for a specific cart_order_id. Requires market admin JWT authentication.",
+                "description": "Retrieves detailed order information for a specific order_id. Requires market admin JWT authentication.",
                 "produces": [
                     "application/json"
                 ],
@@ -530,16 +536,14 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Cart Order ID",
-                        "name": "cart_order_id",
+                        "description": "Order ID",
+                        "name": "order_id",
                         "in": "path",
                         "required": true
                     }
                 ],
                 "responses": {}
-            }
-        },
-        "/api/market/orders/{order_id}": {
+            },
             "put": {
                 "security": [
                     {
@@ -573,6 +577,31 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/models.UpdateOrderStatusRequest"
                         }
+                    }
+                ],
+                "responses": {}
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Deletes a order by its ID. Requires JWT authentication.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Orders"
+                ],
+                "summary": "Delete a order by ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Order ID",
+                        "name": "order_id",
+                        "in": "path",
+                        "required": true
                     }
                 ],
                 "responses": {}
@@ -1690,6 +1719,36 @@ const docTemplate = `{
                 "responses": {}
             }
         },
+        "/api/user-orders/{order_id}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Updates the is_active of an order to false",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Orders"
+                ],
+                "summary": "Update order is_active",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Order ID",
+                        "name": "order_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
         "/banners": {
             "get": {
                 "description": "Retrieves all banners with their ID, description, and thumbnail URL. Public endpoint, no authentication required.",
@@ -1875,6 +1934,12 @@ const docTemplate = `{
                         "type": "string",
                         "description": "Category ID",
                         "name": "category_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Market ID",
+                        "name": "market_id",
                         "in": "query"
                     },
                     {

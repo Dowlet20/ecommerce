@@ -80,6 +80,42 @@ func (h *Handler) deleteSizeByID(w http.ResponseWriter, r *http.Request) {
 }
 
 
+// deleteOrderByID deletes a order
+// @Summary Delete a order by ID
+// @Description Deletes a order by its ID. Requires JWT authentication.
+// @Tags Orders
+// @Produce json
+// @Security BearerAuth
+// @Param order_id path string true "Order ID"
+// @Router /api/market/orders/{order_id} [delete]
+func (h *Handler) deleteOrderByID(w http.ResponseWriter, r *http.Request) {
+	claims, ok := r.Context().Value("claims").(*models.Claims)
+	if !ok || claims.MarketID == 0 || claims.Role != "market_admin" {
+		respondError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	vars := mux.Vars(r)
+	orderID := vars["order_id"]
+	if orderID == "" {
+		respondError(w, http.StatusBadRequest, "Missing order ID")
+		return
+	}
+
+	err := h.db.DeleteOrderByID(claims.MarketID, orderID)
+	if err != nil {
+		if err.Error() == "order not found or unauthorized" {
+			respondError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"message": "Order deleted successfully"})
+}
+
+
 // deleteThumbnail deletes a thumbnail
 // @Summary Delete a thumbnail
 // @Description Deletes a thumbnail by its ID. Requires JWT authentication.

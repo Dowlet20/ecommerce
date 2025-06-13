@@ -133,7 +133,6 @@ func (h *Handler) addLocation(w http.ResponseWriter, r *http.Request) {
 }
 
 
-
 // createOrder submits an order for a cart
 // @Summary Create order
 // @Description Submits an order for a cart order with location and user details. Requires user JWT authentication.

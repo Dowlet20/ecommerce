@@ -87,10 +87,10 @@ type Size struct {
 	Price       float64 `json:"price"`
 }
 type SizeUpdate struct {
-	ID          int     `json:"id"`
-	Size        string  `json:"size"`
-	Count       int     `json:"count"`
-	Price       float64 `json:"price"`
+	ID    int     `json:"id"`
+	Size  string  `json:"size"`
+	Count int     `json:"count"`
+	Price float64 `json:"price"`
 }
 
 type AuthClaims struct {
@@ -284,20 +284,20 @@ type OrderUpdate struct {
 }
 
 type UserOrder struct {
-	ID            int     `json:"id"`
-	CartOrderID   int     `json:"cart_order_id"`
-	MarketName    string  `json:"market_name"`
-	MarketNameRu  string  `json:"market_name_ru"`
-	ProductName   string  `json:"product_name"`
-	ProductNameRu string  `json:"product_name_ru"`
-	Size          string  `json:"size"`
-	Color         string  `json:"color"`
-	ColorRu       string  `json:"color_ru"`
-	ImageURL      string  `json:"image_url"`
-	Status        string  `json:"status"`
-	CreatedAt     string  `json:"created_at"`
-	Sum           float64 `json:"sum"`
-	ProductImageURL string `json:"product_image_url"`
+	ID              int     `json:"id"`
+	CartOrderID     int     `json:"cart_order_id"`
+	MarketName      string  `json:"market_name"`
+	MarketNameRu    string  `json:"market_name_ru"`
+	ProductName     string  `json:"product_name"`
+	ProductNameRu   string  `json:"product_name_ru"`
+	Size            string  `json:"size"`
+	Color           string  `json:"color"`
+	ColorRu         string  `json:"color_ru"`
+	ImageURL        string  `json:"image_url"`
+	Status          string  `json:"status"`
+	CreatedAt       string  `json:"created_at"`
+	Sum             float64 `json:"sum"`
+	ProductImageURL string  `json:"product_image_url"`
 }
 
 // CreateMessageRequest for creating a new message
@@ -316,13 +316,11 @@ type UserMessage struct {
 	Message  string `json:"message"`
 }
 
-
 type UpdateSizeRequest struct {
 	Count int     `json:"count"`
 	Price float64 `json:"price"`
 	Size  string  `json:"size"`
 }
-
 
 // CreateMarketMessageRequest for creating a new market message
 type CreateMarketMessageRequest struct {
@@ -340,9 +338,15 @@ type MarketMessage struct {
 	Message  string `json:"message"`
 }
 
-
-
 // UpdateUserVerifiedRequest represents the request body for updating a user's verified status
 type UpdateUserVerifiedRequest struct {
-    Verified bool `json:"verified"`
+	Verified bool `json:"verified"`
+}
+
+type ForPostOrders struct {
+	MarketID    int `json:"market_id"`
+	ProductID   int `json:"product_id"`
+	ThumbnailID int `json:"thumbnail_id"`
+	SizeID      int `json:"size_id"`
+	Count       int `json:"count"`
 }

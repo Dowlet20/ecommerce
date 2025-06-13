@@ -49,14 +49,14 @@ func (h *Handler) getMarketAdminOrders(w http.ResponseWriter, r *http.Request) {
 }
 
 
-// getMarketAdminOrderByID retrieves a specific order by cart_order_id for a market admin
+// getMarketAdminOrderByID retrieves a specific order by order_id for a market admin
 // @Summary Get market admin order by ID
-// @Description Retrieves detailed order information for a specific cart_order_id. Requires market admin JWT authentication.
+// @Description Retrieves detailed order information for a specific order_id. Requires market admin JWT authentication.
 // @Tags Orders
 // @Produce json
 // @Security BearerAuth
-// @Param cart_order_id path string true "Cart Order ID"
-// @Router /api/market/orders/{cart_order_id} [get]
+// @Param order_id path string true "Order ID"
+// @Router /api/market/orders/{order_id} [get]
 func (h *Handler) getMarketAdminOrderByID(w http.ResponseWriter, r *http.Request) {
 	claims, ok := r.Context().Value("claims").(*models.Claims)
 	if !ok || claims.MarketID == 0 || claims.Role != "market_admin" {
@@ -65,14 +65,14 @@ func (h *Handler) getMarketAdminOrderByID(w http.ResponseWriter, r *http.Request
 	}
 
 	vars := mux.Vars(r)
-	cartOrderIDStr := vars["cart_order_id"]
-	cartOrderID, err := strconv.Atoi(cartOrderIDStr)
+	orderIDStr := vars["order_id"]
+	orderID, err := strconv.Atoi(orderIDStr)
 	if err != nil {
 		respondError(w, http.StatusBadRequest, "Invalid cart order ID")
 		return
 	}
 
-	order, err := h.db.GetMarketAdminOrderByID(claims.MarketID, cartOrderID)
+	order, err := h.db.GetMarketAdminOrderByID(claims.MarketID, orderID)
 	if err != nil {
 		if err.Error() == "order not found or not for this market" {
 			respondError(w, http.StatusNotFound, err.Error())
@@ -123,6 +123,7 @@ func (h *Handler) getMarketProfile(w http.ResponseWriter, r *http.Request) {
 // @Security BearerAuth
 // @Param limit query integer false "Number of products per page (default: 20, min: 1, max: 100)"
 // @Param page query integer false "Page number (default: 1, min: 1)"
+// @Param category_id query string false "Page number"
 // @Router /api/market/markets [get]
 func (h *Handler) getMarketByID(w http.ResponseWriter, r *http.Request) {
 	claims, ok := r.Context().Value("claims").(*models.Claims)
@@ -139,6 +140,7 @@ func (h *Handler) getMarketByID(w http.ResponseWriter, r *http.Request) {
 	// Parse query parameters
 	limitStr := r.URL.Query().Get("limit")
 	pageStr := r.URL.Query().Get("page")
+	categoryIDStr := r.URL.Query().Get("category_id")
 
 	// Default values
 	limit := 20
@@ -164,9 +166,20 @@ func (h *Handler) getMarketByID(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	var categoryID int
+	// Parse page
+	if categoryIDStr != "" {
+		var err error
+		categoryID, err = strconv.Atoi(categoryIDStr)
+		if err != nil || page < 1 {
+			respondError(w, http.StatusBadRequest, "Invalid category_id; must be an integer >= 1")
+			return
+		}
+	}
+
 	marketID := claims.MarketID
 
-	market, products, totalCount, err := h.db.GetMarketByID(r.Context(), marketID, page, limit)
+	market, products, totalCount, err := h.db.GetMarketByID(r.Context(), marketID, categoryID, page, limit)
 	if err != nil {
 		if err.Error() == "market not found" {
 			respondError(w, http.StatusNotFound, err.Error())

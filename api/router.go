@@ -58,7 +58,7 @@ func (h *Handler) SetupRoutes(router *mux.Router) {
 	marketAdmin.HandleFunc("/thumbnails/{thumbnail_id}", h.deleteThumbnail).Methods("DELETE", "OPTIONS")
 	marketAdmin.HandleFunc("/markets/{id}/thumbnail", h.uploadMarketThumbnail).Methods("POST", "OPTIONS")
 	marketAdmin.HandleFunc("/orders", h.getMarketAdminOrders).Methods("GET", "OPTIONS")
-	marketAdmin.HandleFunc("/orders/{cart_order_id}", h.getMarketAdminOrderByID).Methods("GET", "OPTIONS")
+	marketAdmin.HandleFunc("/orders/{order_id}", h.getMarketAdminOrderByID).Methods("GET", "OPTIONS")
 	marketAdmin.HandleFunc("/profile", h.getMarketProfile).Methods("GET", "OPTIONS")
 	marketAdmin.HandleFunc("/profile", h.updateMarketProfile).Methods("PUT", "OPTIONS")
 	marketAdmin.HandleFunc("/orders/{order_id}", h.updateOrderStatus).Methods("PUT", "OPTIONS")
@@ -66,6 +66,7 @@ func (h *Handler) SetupRoutes(router *mux.Router) {
 	marketAdmin.HandleFunc("/thumbnails/{thumbnail_id}", h.updateThumbnail).Methods("PUT","OPITONS")
 	marketAdmin.HandleFunc("/markets", h.getMarketByID).Methods("GET", "OPTIONS")
 	marketAdmin.HandleFunc("/messages", h.createMarketMessage).Methods("POST", "OPTIONS")
+	marketAdmin.HandleFunc("/orders/{order_id}", h.deleteOrderByID).Methods("DELETE", "OPTIONS")
 	// User protected routes
 	userProtected := router.PathPrefix("/api").Subrouter()
 	userProtected.Use(h.authMiddleware)
@@ -85,7 +86,9 @@ func (h *Handler) SetupRoutes(router *mux.Router) {
 	userProtected.HandleFunc("/profile", h.getProfile).Methods("GET", "OPTIONS")
 	userProtected.HandleFunc("/profile", h.updateProfile).Methods("PUT", "OPTIONS")
 	userProtected.HandleFunc("/user-orders", h.getUserOrders).Methods("GET", "OPTIONS")
+	userProtected.HandleFunc("/user-orders/{order_id}", h.deleteUserHistory).Methods("PUT", "OPTIONS")
 	userProtected.HandleFunc("/messages", h.createMessage).Methods("POST", "OPTIONS")
+
 
 	// Public routes
 	router.HandleFunc("/superadmin/register", h.registerSuperadmin).Methods("POST", "OPTIONS")
