@@ -174,6 +174,7 @@ type Order struct {
 
 type MarketAdminOrder struct {
 	ID                int     `json:"id"`
+	UserID            int     `json:"user_id"`
 	CartOrderID       int     `json:"cart_order_id"`
 	LocationAddress   string  `json:"location_address"`
 	LocationAddressRu string  `json:"location_address_ru"`
@@ -185,8 +186,9 @@ type MarketAdminOrder struct {
 
 // MarketAdminOrderDetail represents a detailed order view for market admins
 type MarketAdminOrderDetail struct {
-	ID                int                       `json:"id"`
+	ID                int                       `json:"user_id"`
 	CartOrderID       int                       `json:"cart_order_id"`
+	MarketID          int                       `json:"market_id"`
 	Name              string                    `json:"name"`
 	Phone             string                    `json:"phone"`
 	Status            string                    `json:"status"`
@@ -283,21 +285,23 @@ type OrderUpdate struct {
 	Status   string `json:"status"`
 }
 
+type ProductsUserOrder struct {
+	ProductName   string `json:"product_name"`
+	ProductNameRu string `json:"product_name_ru"`
+	Size          string `json:"size"`
+	Color         string `json:"color"`
+	ColorRu       string `json:"color_ru"`
+	ImageURL      string `json:"image_url"`
+	CreatedAt     string `json:"created_at"`
+}
+
 type UserOrder struct {
-	ID              int     `json:"id"`
-	CartOrderID     int     `json:"cart_order_id"`
-	MarketName      string  `json:"market_name"`
-	MarketNameRu    string  `json:"market_name_ru"`
-	ProductName     string  `json:"product_name"`
-	ProductNameRu   string  `json:"product_name_ru"`
-	Size            string  `json:"size"`
-	Color           string  `json:"color"`
-	ColorRu         string  `json:"color_ru"`
-	ImageURL        string  `json:"image_url"`
-	Status          string  `json:"status"`
-	CreatedAt       string  `json:"created_at"`
-	Sum             float64 `json:"sum"`
-	ProductImageURL string  `json:"product_image_url"`
+	CartOrderID  int                 `json:"cart_order_id"`
+	MarketName   string              `json:"market_name"`
+	MarketNameRu string              `json:"market_name_ru"`
+	Status       string              `json:"status"`
+	Sum          float64             `json:"sum"`
+	Products     []ProductsUserOrder `json:"products"`
 }
 
 // CreateMessageRequest for creating a new message
@@ -349,4 +353,11 @@ type ForPostOrders struct {
 	ThumbnailID int `json:"thumbnail_id"`
 	SizeID      int `json:"size_id"`
 	Count       int `json:"count"`
+}
+
+type SuperadminRequest struct {
+	Phone    *string `json:"phone,omitempty"`
+	FullName string  `json:"full_name,omitempty"`
+	Username string  `json:"username,omitempty"`
+	Password string  `json:"password,omitempty"`
 }

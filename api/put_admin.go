@@ -325,9 +325,10 @@ func (h *Handler) updateMarketProfile(w http.ResponseWriter, r *http.Request) {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param order_id path integer true "Order ID"
+// @Param cart_order_id path integer true "Cart Order ID"
+// @Param user_id path integer true "User ID"
 // @Param body body models.UpdateOrderStatusRequest true "Order status update"
-// @Router /api/market/orders/{order_id} [put]
+// @Router /api/market/orders/{cart_order_id}/{user_id} [put]
 func (h *Handler) updateOrderStatus(w http.ResponseWriter, r *http.Request) {
 	claims, ok := r.Context().Value("claims").(*models.Claims)
 	if !ok || claims.MarketID == 0 || claims.Role != "market_admin" {
@@ -341,9 +342,16 @@ func (h *Handler) updateOrderStatus(w http.ResponseWriter, r *http.Request) {
 
 	// Get order_id from URL
 	vars := mux.Vars(r)
-	orderIDStr := vars["order_id"]
-	orderID, err := strconv.Atoi(orderIDStr)
-	if err != nil || orderID < 1 {
+	orderIDStr := vars["cart_order_id"]
+	cartOrderID, err := strconv.Atoi(orderIDStr)
+	if err != nil || cartOrderID < 1 {
+		respondError(w, http.StatusBadRequest, "Invalid order ID")
+		return
+	}
+
+	userIDStr := vars["user_id"]
+	userID, err := strconv.Atoi(userIDStr)
+	if err != nil || userID < 1 {
 		respondError(w, http.StatusBadRequest, "Invalid order ID")
 		return
 	}
@@ -362,7 +370,7 @@ func (h *Handler) updateOrderStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update order status
-	if err := h.db.UpdateOrderStatus(orderID, claims.MarketID, req.Status); err != nil {
+	if err := h.db.UpdateOrderStatus(cartOrderID, userID, claims.MarketID, req.Status); err != nil {
 		if err.Error() == "order not found" || err.Error() == "order not found or not associated with this market" {
 			respondError(w, http.StatusNotFound, err.Error())
 			return

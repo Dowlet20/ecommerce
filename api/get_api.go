@@ -1,14 +1,15 @@
 package api
 
 import (
+	"Dowlet_projects/ecommerce/models"
+	"encoding/json"
+	"fmt"
+	"log"
 	"net/http"
 	"strconv"
-	"fmt"
-	"Dowlet_projects/ecommerce/models"
-	"github.com/gorilla/mux"
-	"encoding/json"
-)
 
+	"github.com/gorilla/mux"
+)
 
 // getMarkets returns all markets
 // @Summary Get all markets
@@ -55,42 +56,42 @@ func (h *Handler) getMarkets(w http.ResponseWriter, r *http.Request) {
 
 
 
-// getMarketProducts retrieves products for the market admin
-// @Summary Get market products
-// @Description Retrieves a paginated list of products for the market admin's market. Requires JWT authentication.
-// @Tags Products
-// @Produce json
-// @Param page query integer false "Page number (default: 1)"
-// @Param limit query integer false "Items per page (default: 10)"
-// @Router /products [get]
-func (h *Handler) getMarketProducts(w http.ResponseWriter, r *http.Request) {
-	claims, ok := r.Context().Value("claims").(*models.Claims)
-	if !ok || claims.MarketID == 0 || claims.Role != "market_admin" {
-		respondError(w, http.StatusUnauthorized, "Unauthorized")
-		return
-	}
+// // getMarketProducts retrieves products for the market admin
+// // @Summary Get market products
+// // @Description Retrieves a paginated list of products for the market admin's market. Requires JWT authentication.
+// // @Tags Products
+// // @Produce json
+// // @Param page query integer false "Page number (default: 1)"
+// // @Param limit query integer false "Items per page (default: 10)"
+// // @Router /products [get]
+// func (h *Handler) getMarketProducts(w http.ResponseWriter, r *http.Request) {
+// 	claims, ok := r.Context().Value("claims").(*models.Claims)
+// 	if !ok || claims.MarketID == 0 || claims.Role != "market_admin" {
+// 		respondError(w, http.StatusUnauthorized, "Unauthorized")
+// 		return
+// 	}
 
-	pageStr := r.URL.Query().Get("page")
-	limitStr := r.URL.Query().Get("limit")
+// 	pageStr := r.URL.Query().Get("page")
+// 	limitStr := r.URL.Query().Get("limit")
 
-	page, err := strconv.Atoi(pageStr)
-	if err != nil || page < 1 {
-		page = 1
-	}
+// 	page, err := strconv.Atoi(pageStr)
+// 	if err != nil || page < 1 {
+// 		page = 1
+// 	}
 
-	limit, err := strconv.Atoi(limitStr)
-	if err != nil || limit < 1 {
-		limit = 10
-	}
+// 	limit, err := strconv.Atoi(limitStr)
+// 	if err != nil || limit < 1 {
+// 		limit = 10
+// 	}
 
-	products, err := h.db.GetMarketProducts(r.Context(), claims.MarketID, 0, page, limit)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
+// 	products, err := h.db.GetMarketProducts(r.Context(), claims.MarketID, 0, page, limit)
+// 	if err != nil {
+// 		respondError(w, http.StatusInternalServerError, err.Error())
+// 		return
+// 	}
 
-	respondJSON(w, http.StatusOK, products)
-}
+// 	respondJSON(w, http.StatusOK, products)
+// }
 
 
 
@@ -99,6 +100,7 @@ func (h *Handler) getMarketProducts(w http.ResponseWriter, r *http.Request) {
 // @Description Retrieves paginated products with optional category, price range, discount, new status, sorting, name search, or random selection for homepage
 // @Tags Products
 // @Produce json
+// @Security BearerAuth
 // @Param category_id query string false "Category ID"
 // @Param market_id query string false "Market ID"
 // @Param duration query integer false "Duration day for new (default: 7)"
@@ -111,9 +113,22 @@ func (h *Handler) getMarketProducts(w http.ResponseWriter, r *http.Request) {
 // @Param sort query string false "Sort order: cheap_to_expensive, expensive_to_cheap (default: by ID)"
 // @Param has_discount query boolean false "Filter products with discount (default: false)"
 // @Param is_new query boolean false "Filter new products (default: false)"
-// @Router /products [get]
+// @Router /api/products [get]
 func (h *Handler)  getAllProducts(w http.ResponseWriter, r *http.Request) {
 	// Parse query parameters
+	var userID int
+    claims, ok := r.Context().Value("claims").(*models.Claims)
+    if !ok || claims == nil {
+        log.Println("No valid claims found in context; treating as unauthenticated user")
+        userID = 0
+    } else if claims.Role != "user" {
+        log.Printf("User role %s is not 'user'; treating as unauthenticated user", claims.Role)
+        userID = 0
+    } else {
+        userID = int(claims.UserID)
+        log.Printf("Authenticated user ID: %d", userID)
+    }
+
 	marketIDStr := r.URL.Query().Get("market_id")
 	fmt.Println(marketIDStr)
 	var marketID int
@@ -220,7 +235,144 @@ func (h *Handler)  getAllProducts(w http.ResponseWriter, r *http.Request) {
 		isNew = false
 	}
 
-	products, err := h.db.GetPaginatedProducts(r.Context(), categoryID, marketID, duration, page, limit, search, random, startPrice, endPrice, sort, hasDiscount, isNew)
+	products, err := h.db.GetPaginatedProducts(r.Context(), userID, categoryID, marketID, duration, page, limit, search, random, startPrice, endPrice, sort, hasDiscount, isNew)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, products)
+}
+
+
+// getAllProducts retrieves all paginated products with optional filters and sorting
+// @Summary Get all products
+// @Description Retrieves paginated products with optional category, price range, discount, new status, sorting, name search, or random selection for homepage
+// @Tags Products
+// @Produce json
+// @Param category_id query string false "Category ID"
+// @Param market_id query string false "Market ID"
+// @Param duration query integer false "Duration day for new (default: 7)"
+// @Param page query integer false "Page number (default: 1, ignored if random=true)"
+// @Param limit query integer false "Items per page (default: 10, ignored if random=true)"
+// @Param search query string false "Search by product name"
+// @Param random query boolean false "Return 10 random products (default: false)"
+// @Param start_price query number false "Minimum final price"
+// @Param end_price query number false "Maximum final price"
+// @Param sort query string false "Sort order: cheap_to_expensive, expensive_to_cheap (default: by ID)"
+// @Param has_discount query boolean false "Filter products with discount (default: false)"
+// @Param is_new query boolean false "Filter new products (default: false)"
+// @Router /products [get]
+func (h *Handler)  getAllProductsNonAuthenticated(w http.ResponseWriter, r *http.Request) {
+	// Parse query parameters
+	var userID int
+	marketIDStr := r.URL.Query().Get("market_id")
+	fmt.Println(marketIDStr)
+	var marketID int
+	if marketIDStr != "" {
+		var err error
+		marketID, err = strconv.Atoi(marketIDStr)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, "Invalid market ID")
+			return
+		}
+	}
+
+	categoryIDStr := r.URL.Query().Get("category_id")
+	var categoryID int
+	if categoryIDStr != "" {
+		var err error
+		categoryID, err = strconv.Atoi(categoryIDStr)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, "Invalid category ID")
+			return
+		}
+	}
+
+	durationStr := r.URL.Query().Get("duration")
+	pageStr := r.URL.Query().Get("page")
+	limitStr := r.URL.Query().Get("limit")
+	search := r.URL.Query().Get("search")
+	randomStr := r.URL.Query().Get("random")
+	startPriceStr := r.URL.Query().Get("start_price")
+	endPriceStr := r.URL.Query().Get("end_price")
+	sort := r.URL.Query().Get("sort")
+	hasDiscountStr := r.URL.Query().Get("has_discount")
+	isNewStr := r.URL.Query().Get("is_new")
+
+	// Validate duration
+	duration, err := strconv.Atoi(durationStr)
+	if err != nil || duration < 1 {
+		duration = 7
+	}
+
+	// Validate page
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page < 1 {
+		page = 1
+	}
+
+	// Validate limit
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit < 1 {
+		limit = 10
+	}
+
+	// Validate random
+	random, err := strconv.ParseBool(randomStr)
+	if err != nil {
+		random = false
+	}
+	if random {
+		page = 1
+		limit = 10
+	}
+
+	// Validate start_price
+	var startPrice float64
+	if startPriceStr != "" {
+		startPrice, err = strconv.ParseFloat(startPriceStr, 64)
+		if err != nil || startPrice < 0 {
+			respondError(w, http.StatusBadRequest, "Invalid start price")
+			return
+		}
+	}
+
+	// Validate end_price
+	var endPrice float64
+	if endPriceStr != "" {
+		endPrice, err = strconv.ParseFloat(endPriceStr, 64)
+		if err != nil || endPrice < 0 {
+			respondError(w, http.StatusBadRequest, "Invalid end price")
+			return
+		}
+	}
+
+	// Validate start_price <= end_price
+	if startPriceStr != "" && endPriceStr != "" && startPrice > endPrice {
+		respondError(w, http.StatusBadRequest, "Start price must be less than or equal to end price")
+		return
+	}
+
+	// Validate sort
+	if sort != "" && sort != "cheap_to_expensive" && sort != "expensive_to_cheap" {
+		respondError(w, http.StatusBadRequest, "Invalid sort value; must be cheap_to_expensive or expensive_to_cheap")
+		return
+	}
+
+	// Validate has_discount
+	hasDiscount, err := strconv.ParseBool(hasDiscountStr)
+	if err != nil {
+		hasDiscount = false
+	}
+
+	// Validate is_new
+	isNew, err := strconv.ParseBool(isNewStr)
+	if err != nil {
+		isNew = false
+	}
+
+	products, err := h.db.GetPaginatedProducts(r.Context(), userID, categoryID, marketID, duration, page, limit, search, random, startPrice, endPrice, sort, hasDiscount, isNew)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -242,7 +394,43 @@ func (h *Handler) getProduct(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id := vars["id"]
 
-	product, err := h.db.GetProduct(id)
+	product, err := h.db.GetProduct(id, 0)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, product)
+}
+
+
+// getProductNonAuthenticated returns a single product by ID
+// @Summary Get a product by ID
+// @Description Retrieves a single product by its ID. Requires JWT authentication.
+// @Tags Products
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "Product ID"
+// @Router /api/products/{id} [get]
+func (h *Handler) getProductNonAuthenticated(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id := vars["id"]
+
+	var userID int
+    claims, ok := r.Context().Value("claims").(*models.Claims)
+    if !ok || claims == nil {
+        log.Println("No valid claims found in context; treating as unauthenticated user")
+        userID = 0
+    } else if claims.Role != "user" {
+        log.Printf("User role %s is not 'user'; treating as unauthenticated user", claims.Role)
+        userID = 0
+    } else {
+        userID = int(claims.UserID)
+        log.Printf("Authenticated user ID: %d", userID)
+    }
+
+	product, err := h.db.GetProduct(id, userID)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return

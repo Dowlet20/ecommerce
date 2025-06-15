@@ -518,7 +518,7 @@ const docTemplate = `{
                 "responses": {}
             }
         },
-        "/api/market/orders/{order_id}": {
+        "/api/market/orders/{cart_order_id}/{user_id}": {
             "get": {
                 "security": [
                     {
@@ -536,8 +536,15 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Order ID",
-                        "name": "order_id",
+                        "description": "Cart Order ID",
+                        "name": "cart_order_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "User ID",
+                        "name": "user_id",
                         "in": "path",
                         "required": true
                     }
@@ -564,8 +571,15 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "integer",
-                        "description": "Order ID",
-                        "name": "order_id",
+                        "description": "Cart Order ID",
+                        "name": "cart_order_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "User ID",
+                        "name": "user_id",
                         "in": "path",
                         "required": true
                     },
@@ -580,7 +594,9 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {}
-            },
+            }
+        },
+        "/api/market/orders/{order_id}": {
             "delete": {
                 "security": [
                     {
@@ -1136,6 +1152,128 @@ const docTemplate = `{
                 "responses": {}
             }
         },
+        "/api/products": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieves paginated products with optional category, price range, discount, new status, sorting, name search, or random selection for homepage",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Products"
+                ],
+                "summary": "Get all products",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Category ID",
+                        "name": "category_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Market ID",
+                        "name": "market_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Duration day for new (default: 7)",
+                        "name": "duration",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page number (default: 1, ignored if random=true)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Items per page (default: 10, ignored if random=true)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Search by product name",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Return 10 random products (default: false)",
+                        "name": "random",
+                        "in": "query"
+                    },
+                    {
+                        "type": "number",
+                        "description": "Minimum final price",
+                        "name": "start_price",
+                        "in": "query"
+                    },
+                    {
+                        "type": "number",
+                        "description": "Maximum final price",
+                        "name": "end_price",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sort order: cheap_to_expensive, expensive_to_cheap (default: by ID)",
+                        "name": "sort",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Filter products with discount (default: false)",
+                        "name": "has_discount",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Filter new products (default: false)",
+                        "name": "is_new",
+                        "in": "query"
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/api/products/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieves a single product by its ID. Requires JWT authentication.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Products"
+                ],
+                "summary": "Get a product by ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Product ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
         "/api/profile": {
             "get": {
                 "security": [
@@ -1544,6 +1682,38 @@ const docTemplate = `{
                         "name": "id",
                         "in": "path",
                         "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/api/superadmin/superadmin-update": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Updates a superadmin's details. Requires superadmin JWT authentication.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Superadmins"
+                ],
+                "summary": "Update a superadmin",
+                "parameters": [
+                    {
+                        "description": "Superadmin details",
+                        "name": "superadmin",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.SuperadminRequest"
+                        }
                     }
                 ],
                 "responses": {}
@@ -2327,6 +2497,23 @@ const docTemplate = `{
             }
         },
         "models.SuperadminRegisterRequest": {
+            "type": "object",
+            "properties": {
+                "full_name": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.SuperadminRequest": {
             "type": "object",
             "properties": {
                 "full_name": {

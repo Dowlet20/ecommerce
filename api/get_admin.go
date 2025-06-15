@@ -55,8 +55,9 @@ func (h *Handler) getMarketAdminOrders(w http.ResponseWriter, r *http.Request) {
 // @Tags Orders
 // @Produce json
 // @Security BearerAuth
-// @Param order_id path string true "Order ID"
-// @Router /api/market/orders/{order_id} [get]
+// @Param cart_order_id path string true "Cart Order ID"
+// @Param user_id path string true "User ID"
+// @Router /api/market/orders/{cart_order_id}/{user_id} [get]
 func (h *Handler) getMarketAdminOrderByID(w http.ResponseWriter, r *http.Request) {
 	claims, ok := r.Context().Value("claims").(*models.Claims)
 	if !ok || claims.MarketID == 0 || claims.Role != "market_admin" {
@@ -65,14 +66,23 @@ func (h *Handler) getMarketAdminOrderByID(w http.ResponseWriter, r *http.Request
 	}
 
 	vars := mux.Vars(r)
-	orderIDStr := vars["order_id"]
-	orderID, err := strconv.Atoi(orderIDStr)
+	cartOrderIDStr := vars["cart_order_id"]
+	cartOrderID, err := strconv.Atoi(cartOrderIDStr)
 	if err != nil {
 		respondError(w, http.StatusBadRequest, "Invalid cart order ID")
 		return
 	}
+	
+	userIDStr := vars["user_id"]
+	userID, err := strconv.Atoi(userIDStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid User ID")
+		return
+	}
 
-	order, err := h.db.GetMarketAdminOrderByID(claims.MarketID, orderID)
+
+
+	order, err := h.db.GetMarketAdminOrderByID(claims.MarketID, cartOrderID, userID)
 	if err != nil {
 		if err.Error() == "order not found or not for this market" {
 			respondError(w, http.StatusNotFound, err.Error())

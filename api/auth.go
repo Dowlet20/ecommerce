@@ -370,22 +370,22 @@ func validatePhone(phone string) bool {
 	return re.MatchString(phone)
 }
 
-// generateJWT creates a JWT token
-func generateJWT(userID int) (string, error) {
-	claims := &models.Claims{
-		UserID: userID,
-		StandardClaims: jwt.StandardClaims{
-			ExpiresAt: time.Now().Add(24 * time.Hour).Unix(),
-			IssuedAt:  time.Now().Unix(),
-		},
-	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signedToken, err := token.SignedString([]byte("your-secret-key"))
-	if err != nil {
-		return "", fmt.Errorf("failed to sign token: %v", err)
-	}
-	return signedToken, nil
-}
+// // generateJWT creates a JWT token
+// func generateJWT(userID int) (string, error) {
+// 	claims := &models.Claims{
+// 		UserID: userID,
+// 		StandardClaims: jwt.StandardClaims{
+// 			ExpiresAt: time.Now().Add(24 * time.Hour).Unix(),
+// 			IssuedAt:  time.Now().Unix(),
+// 		},
+// 	}
+// 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+// 	signedToken, err := token.SignedString([]byte("your-secret-key"))
+// 	if err != nil {
+// 		return "", fmt.Errorf("failed to sign token: %v", err)
+// 	}
+// 	return signedToken, nil
+// }
 
 
 // generateJWT creates a JWT
@@ -395,12 +395,12 @@ func (h *Handler) generateJWT(userID, marketID int, role string) (string, error)
 		MarketID: marketID,
 		Role:     role,
 		StandardClaims: jwt.StandardClaims{
-			ExpiresAt: time.Now().Add(24 * time.Hour).Unix(),
+			//ExpiresAt: time.Now().Add(24 * time.Hour).Unix(),
 		},
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte("your-secret-key"))
+	return token.SignedString([]byte("Sada!123"))
 }
 
 

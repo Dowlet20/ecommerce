@@ -407,3 +407,78 @@ func (h *Handler) updateMarket(w http.ResponseWriter, r *http.Request) {
         "thumbnail_url":newThumbnailURL,
     })
 }
+
+// updateSuperadmin updates a superadmin
+// @Summary Update a superadmin
+// @Description Updates a superadmin's details. Requires superadmin JWT authentication.
+// @Tags Superadmins
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param superadmin body models.SuperadminRequest true "Superadmin details"
+// @Router /api/superadmin/superadmin-update [put]
+func (h *Handler) updateSuperadmin(w http.ResponseWriter, r *http.Request) {
+    // Verify superadmin
+    claims, ok := r.Context().Value("claims").(*models.Claims)
+    if !ok || claims.Role != "superadmin" {
+        if !ok {
+            respondError(w, http.StatusUnauthorized, "Unauthorized")
+        } else {
+            respondError(w, http.StatusForbidden, "Forbidden")
+        }
+        return
+    }
+
+    // Parse JSON body
+    var req models.SuperadminRequest
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        respondError(w, http.StatusBadRequest, "Error parsing JSON body")
+        return
+    }
+
+    // Validate inputs
+    if req.Phone != nil {
+        phone := strings.TrimSpace(*req.Phone)
+        if len(phone) > 20 || (phone != "" && !strings.HasPrefix(phone, "+")) {
+            respondError(w, http.StatusBadRequest, "Invalid phone format")
+            return
+        }
+        req.Phone = &phone
+    }
+    if req.FullName != "" {
+        fullName := strings.TrimSpace(req.FullName)
+        if len(fullName) > 255 {
+            respondError(w, http.StatusBadRequest, "Full name too long")
+            return
+        }
+        req.FullName = fullName
+    }
+    if req.Username != "" {
+        username := strings.TrimSpace(req.Username)
+        if len(username) > 50 || len(username) < 3 {
+            respondError(w, http.StatusBadRequest, "Username must be 3-50 characters")
+            return
+        }
+        req.Username = username
+    }
+    if req.Password != "" && len(req.Password) < 6 {
+        respondError(w, http.StatusBadRequest, "Password must be at least 6 characters")
+        return
+    }
+
+    // Update superadmin
+    err := h.db.UpdateSuperadmin(r.Context(), int(claims.UserID), req.Phone, req.FullName, req.Username, req.Password)
+    if err != nil {
+        switch err.Error() {
+        case "superadmin not found":
+            respondError(w, http.StatusNotFound, err.Error())
+        case "username already exists":
+            respondError(w, http.StatusConflict, err.Error())
+        default:
+            respondError(w, http.StatusInternalServerError, err.Error())
+        }
+        return
+    }
+
+    respondJSON(w, http.StatusOK, map[string]string{"message": "Superadmin updated successfully"})
+}

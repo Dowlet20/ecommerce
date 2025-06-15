@@ -122,6 +122,17 @@ definitions:
       username:
         type: string
     type: object
+  models.SuperadminRequest:
+    properties:
+      full_name:
+        type: string
+      password:
+        type: string
+      phone:
+        type: string
+      username:
+        type: string
+    type: object
   models.UpdateCartRequest:
     properties:
       count_change:
@@ -502,30 +513,19 @@ paths:
       summary: Get market admin orders
       tags:
       - Orders
-  /api/market/orders/{order_id}:
-    delete:
-      description: Deletes a order by its ID. Requires JWT authentication.
-      parameters:
-      - description: Order ID
-        in: path
-        name: order_id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses: {}
-      security:
-      - BearerAuth: []
-      summary: Delete a order by ID
-      tags:
-      - Orders
+  /api/market/orders/{cart_order_id}/{user_id}:
     get:
       description: Retrieves detailed order information for a specific order_id. Requires
         market admin JWT authentication.
       parameters:
-      - description: Order ID
+      - description: Cart Order ID
         in: path
-        name: order_id
+        name: cart_order_id
+        required: true
+        type: string
+      - description: User ID
+        in: path
+        name: user_id
         required: true
         type: string
       produces:
@@ -542,9 +542,14 @@ paths:
       description: Updates the status of an order to 'canceled' or 'delivered'. Requires
         market admin JWT authentication.
       parameters:
-      - description: Order ID
+      - description: Cart Order ID
         in: path
-        name: order_id
+        name: cart_order_id
+        required: true
+        type: integer
+      - description: User ID
+        in: path
+        name: user_id
         required: true
         type: integer
       - description: Order status update
@@ -559,6 +564,23 @@ paths:
       security:
       - BearerAuth: []
       summary: Update order status
+      tags:
+      - Orders
+  /api/market/orders/{order_id}:
+    delete:
+      description: Deletes a order by its ID. Requires JWT authentication.
+      parameters:
+      - description: Order ID
+        in: path
+        name: order_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Delete a order by ID
       tags:
       - Orders
   /api/market/products:
@@ -914,6 +936,87 @@ paths:
       summary: Create a new message
       tags:
       - User Messages
+  /api/products:
+    get:
+      description: Retrieves paginated products with optional category, price range,
+        discount, new status, sorting, name search, or random selection for homepage
+      parameters:
+      - description: Category ID
+        in: query
+        name: category_id
+        type: string
+      - description: Market ID
+        in: query
+        name: market_id
+        type: string
+      - description: 'Duration day for new (default: 7)'
+        in: query
+        name: duration
+        type: integer
+      - description: 'Page number (default: 1, ignored if random=true)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Items per page (default: 10, ignored if random=true)'
+        in: query
+        name: limit
+        type: integer
+      - description: Search by product name
+        in: query
+        name: search
+        type: string
+      - description: 'Return 10 random products (default: false)'
+        in: query
+        name: random
+        type: boolean
+      - description: Minimum final price
+        in: query
+        name: start_price
+        type: number
+      - description: Maximum final price
+        in: query
+        name: end_price
+        type: number
+      - description: 'Sort order: cheap_to_expensive, expensive_to_cheap (default:
+          by ID)'
+        in: query
+        name: sort
+        type: string
+      - description: 'Filter products with discount (default: false)'
+        in: query
+        name: has_discount
+        type: boolean
+      - description: 'Filter new products (default: false)'
+        in: query
+        name: is_new
+        type: boolean
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Get all products
+      tags:
+      - Products
+  /api/products/{id}:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves a single product by its ID. Requires JWT authentication.
+      parameters:
+      - description: Product ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Get a product by ID
+      tags:
+      - Products
   /api/profile:
     get:
       description: Retrieves the full_name, phone, and id of the authenticated user.
@@ -1192,6 +1295,26 @@ paths:
       summary: Update a market
       tags:
       - Markets
+  /api/superadmin/superadmin-update:
+    put:
+      consumes:
+      - application/json
+      description: Updates a superadmin's details. Requires superadmin JWT authentication.
+      parameters:
+      - description: Superadmin details
+        in: body
+        name: superadmin
+        required: true
+        schema:
+          $ref: '#/definitions/models.SuperadminRequest'
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Update a superadmin
+      tags:
+      - Superadmins
   /api/superadmin/user-messages:
     get:
       description: Retrieves all messages sent by users to superadmin. Requires superadmin
