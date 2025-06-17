@@ -2842,7 +2842,7 @@ func (s *DBService) GetUserOrders(UserID int, status string) ([]models.UserOrder
 			m.name as market_name,
 			m.name_ru as market_name_ru,
 			SUM(s.price * (1 - COALESCE(p.discount, 0)/100) * o.count) + m.delivery_price as sum
-		FROM orders o
+		FROM orders o 
 		JOIN markets m ON o.market_id = m.id
 		JOIN sizes s ON o.size_id = s.id
 		JOIN products p ON o.product_id = p.id
@@ -2855,7 +2855,7 @@ func (s *DBService) GetUserOrders(UserID int, status string) ([]models.UserOrder
 	}
 
 	query += `
-		GROUP BY o.cart_order_id, o.status, m.name, m.name_ru, m.delivery_price
+		GROUP BY o.cart_order_id
 		ORDER BY o.created_at DESC`
 
 	rows, err := s.db.Query(query, args...)
@@ -2966,6 +2966,7 @@ func (s *DBService) CreateMessage(userID int, req models.CreateMessageRequest) (
 
 	return int(id), nil
 }
+
 // UpdateSize updates a size entry
 func (s *DBService) UpdateSize(sizeID int, req models.UpdateSizeRequest) (models.SizeUpdate, error) {
 	tx, err := s.db.Begin()

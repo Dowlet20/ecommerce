@@ -2,20 +2,33 @@ package api
 
 import (
 	//"Dowlet_projects/ecommerce/models"
+	"Dowlet_projects/ecommerce/config"
 	"Dowlet_projects/ecommerce/services"
-	"github.com/rs/cors"
+	"fmt"
+	//"os"
+
 	"github.com/gorilla/mux"
+	"github.com/rs/cors"
 )
 
 
-// Handler holds dependencies for API routes
 type Handler struct {
-	db *services.DBService
+	db  *services.DBService
+	cfg *config.Config
 }
 
-// NewHandler creates a new API handler
-func NewHandler(db *services.DBService) *Handler {
-	return &Handler{db: db}
+// NewHandler creates a new Handler with the given DBService and Config
+func NewHandler(db *services.DBService, cfg *config.Config) (*Handler, error) {
+	if db == nil {
+		return nil, fmt.Errorf("db service cannot be nil")
+	}
+	if cfg == nil {
+		return nil, fmt.Errorf("config cannot be nil")
+	}
+	return &Handler{
+		db:  db,
+		cfg: cfg,
+	}, nil
 }
 
 // SetupRoutes configures API routes
@@ -64,7 +77,7 @@ func (h *Handler) SetupRoutes(router *mux.Router) {
 	marketAdmin.HandleFunc("/profile", h.updateMarketProfile).Methods("PUT", "OPTIONS")
 	marketAdmin.HandleFunc("/orders/{cart_order_id}/{user_id}", h.updateOrderStatus).Methods("PUT", "OPTIONS")
 	marketAdmin.HandleFunc("/sizes/{size_id}", h.updateSize).Methods("PUT", "OPTIONS")
-	marketAdmin.HandleFunc("/thumbnails/{thumbnail_id}", h.updateThumbnail).Methods("PUT","OPITONS")
+	marketAdmin.HandleFunc("/thumbnails/{thumbnail_id}", h.updateThumbnail).Methods("PUT", "OPITONS")
 	marketAdmin.HandleFunc("/markets", h.getMarketByID).Methods("GET", "OPTIONS")
 	marketAdmin.HandleFunc("/messages", h.createMarketMessage).Methods("POST", "OPTIONS")
 	marketAdmin.HandleFunc("/orders/{order_id}", h.deleteOrderByID).Methods("DELETE", "OPTIONS")
@@ -89,7 +102,6 @@ func (h *Handler) SetupRoutes(router *mux.Router) {
 	userProtected.HandleFunc("/user-orders", h.getUserOrders).Methods("GET", "OPTIONS")
 	userProtected.HandleFunc("/user-orders/{order_id}", h.deleteUserHistory).Methods("PUT", "OPTIONS")
 	userProtected.HandleFunc("/messages", h.createMessage).Methods("POST", "OPTIONS")
-
 
 	// Public routes
 	router.HandleFunc("/superadmin/register", h.registerSuperadmin).Methods("POST", "OPTIONS")

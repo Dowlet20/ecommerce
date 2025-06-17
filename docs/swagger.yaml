@@ -175,7 +175,6 @@ definitions:
       verified:
         type: boolean
     type: object
-host: 192.168.55.42:8080
 info:
   contact: {}
   description: API for an e-commerce platform with OTP-based authentication and product/market

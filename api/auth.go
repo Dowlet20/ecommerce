@@ -1,25 +1,16 @@
 package api
 
 import (
-	//"context"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
-
-	//"io"
 	"net/http"
-	//"os"
-	//"path/filepath"
 	"regexp"
-	//"strings"
 	"time"
-	//"strconv"
 
 	"github.com/dgrijalva/jwt-go"
-	//"github.com/gorilla/mux"
-	//"github.com/rs/cors"
 	"Dowlet_projects/ecommerce/models"
 	"Dowlet_projects/ecommerce/services"
 )
@@ -40,7 +31,6 @@ type VerifyCodeRequest struct {
 	Phone string `json:"phone" example:"+12345678901" description:"Phone number in international format" validate:"required"`
 	Code  string `json:"code" example:"1234" description:"4-digit verification code" validate:"required,len=4"`
 }
-
 
 // register handles user registration
 // @Summary Register a new user
@@ -139,7 +129,6 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-
 // loginSuperadmin authenticates a superadmin
 // @Summary Login superadmin
 // @Description Authenticates a superadmin and returns a JWT token.
@@ -209,7 +198,6 @@ func (h *Handler) loginMarket(w http.ResponseWriter, r *http.Request) {
 
 	respondJSON(w, http.StatusOK, map[string]string{"token": token})
 }
-
 
 // registerSuperadmin registers a new superadmin
 // @Summary Register a new superadmin
@@ -348,7 +336,7 @@ func (h *Handler) authMiddleware(next http.Handler) http.Handler {
 
 		claims := &models.Claims{}
 		token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
-			return []byte("your-secret-key"), nil
+			return []byte(h.cfg.JWTSecret), nil
 		})
 		if err != nil || !token.Valid {
 			respondError(w, http.StatusUnauthorized, "Invalid token")
@@ -362,7 +350,6 @@ func (h *Handler) authMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
-
 
 // validatePhone checks if the phone number is valid
 func validatePhone(phone string) bool {
@@ -387,22 +374,17 @@ func validatePhone(phone string) bool {
 // 	return signedToken, nil
 // }
 
-
 // generateJWT creates a JWT
 func (h *Handler) generateJWT(userID, marketID int, role string) (string, error) {
 	claims := &models.Claims{
-		UserID:   userID,
-		MarketID: marketID,
-		Role:     role,
+		UserID:         userID,
+		MarketID:       marketID,
+		Role:           role,
 		StandardClaims: jwt.StandardClaims{
 			//ExpiresAt: time.Now().Add(24 * time.Hour).Unix(),
 		},
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte("Sada!123"))
+	return token.SignedString([]byte(h.cfg.JWTSecret))
 }
-
-
-
-
